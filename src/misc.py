@@ -1,0 +1,1 @@
+RANDOM_VAR = "Python 3.12"
