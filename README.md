@@ -7,7 +7,7 @@
   - `area`, `depth`, `width`, `height`, `volume`
 - **Target Variable**:  
   - `technology` (manufacturing technology label)
-- **Dataset**: `./data/item_data.csv`
+- **Dataset**: `./data/dataset.csv`
 
 ## Contributors
  - Manh Linh Phan
