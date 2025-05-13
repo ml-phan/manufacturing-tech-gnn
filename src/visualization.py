@@ -1,5 +1,6 @@
 import joblib
 import matplotlib.pyplot as plt
+import networkx as nx
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -39,4 +40,18 @@ def plot_topological_features_distribution(data, feature_cols):
         plt.xlabel(feature)
         plt.ylabel("Frequency")
     plt.tight_layout()
+    plt.show()
+
+
+def display_graphml_matplotlib(file_path):
+    # Load the graph from the GraphML file
+    G = nx.read_graphml(file_path)
+
+    # Choose layout
+    pos = nx.spring_layout(G)
+
+    # Draw the graph
+    plt.figure(figsize=(10, 8))
+    nx.draw(G, pos, with_labels=True, node_color="lightblue", edge_color="gray", node_size=500, font_size=10)
+    plt.title("GraphML Visualization (Matplotlib)")
     plt.show()
