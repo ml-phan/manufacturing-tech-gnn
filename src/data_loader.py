@@ -264,3 +264,17 @@ def remove_minority_class(
 
     return data
 
+def get_data():
+    """Get the data from the database and process it.
+    Returns:
+        pd.DataFrame: Processed DataFrame.
+    """
+    # Download data
+    data = download_data(update=False)
+
+    # Process data
+    data = data_processing(data)
+
+    # Remove minority class
+    data = remove_minority_class(data, percentage_threshold=1)
+    return data
