@@ -1,4 +1,5 @@
 import joblib
+import numpy as np
 import os
 import pandas as pd
 
@@ -7,8 +8,8 @@ from dotenv import load_dotenv, find_dotenv
 from jedi.settings import fast_parser
 from sqlalchemy import create_engine, Engine
 from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import StratifiedKFold
 
-# from baseline_model import df_summary
 
 env_file = find_dotenv()
 load_dotenv(dotenv_path=env_file)
@@ -214,7 +215,7 @@ def data_processing(data: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Create "Is_CNC" column for binary classification
-    dataset["Is_CNC"] = dataset["technology_name"].str.contains(
+    dataset["is_cnc"] = dataset["technology_name"].str.contains(
         "CNC",
         case=False,
         na=False
@@ -278,3 +279,4 @@ def get_data():
     # Remove minority class
     data = remove_minority_class(data, percentage_threshold=1)
     return data
+

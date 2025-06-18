@@ -94,3 +94,6 @@ def randomizedsearchcv_xgboost(
     )
     search.fit(X_train, y_train, sample_weight=sample_weight)
     return search
+
+
+def training_pipeline_xgboost()
