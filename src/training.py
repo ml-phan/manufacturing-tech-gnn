@@ -1,7 +1,17 @@
 import pandas as pd
+import numpy as np
+
+from pprint import pprint
+from scipy.stats import randint, uniform
 from sklearn.utils.class_weight import compute_sample_weight
 from sklearn.model_selection import RandomizedSearchCV
+from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
+from sklearn.metrics import (
+    accuracy_score, f1_score, top_k_accuracy_score,
+    classification_report, confusion_matrix, roc_auc_score,
+    average_precision_score
+)
 
 
 def train_xgboost(
@@ -41,11 +51,12 @@ def randomizedsearchcv_xgboost(
         X_train: pd.DataFrame,
         y_train: pd.Series,
         params: dict,
-        n_iter: int = 50,
+        n_iter: int = 10,
         cv: int = 5,
         scoring: str = "f1_weighted",
         random_state: int = 42,
-        use_sample_weight: bool = True) -> RandomizedSearchCV:
+        use_sample_weight: bool = True,
+    ) -> RandomizedSearchCV:
     """
     Perform Randomized Search Cross-Validation on the XGBoost model.
     Args:
@@ -90,10 +101,34 @@ def randomizedsearchcv_xgboost(
         cv=cv,
         scoring=scoring,
         random_state=random_state,
-        verbose=2,
+        verbose=0,
     )
     search.fit(X_train, y_train, sample_weight=sample_weight)
     return search
 
 
-def training_pipeline_xgboost()
+def training_pipeline_xgboost(X_train, y_binary_train, y_multi_train=None):
+    """
+    Run the training pipeline for XGBoost on both binary and multi-class datasets.
+    Args:
+        X_train (pd.DataFrame): Feature matrix for training.
+        y_binary_train (pd.Series): Binary target variable for training.
+        y_multi_train (pd.Series): Multi-class target variable for training.
+    Returns:
+        tuple: Best RandomizedSearchCV objects for binary and multi-class datasets.
+
+    """
+    best_search_binary = None
+    best_search_multi = None
+    params = {
+        "n_estimators": randint(100, 300),
+        "max_depth": randint(3, 10),
+        "learning_rate": uniform(0.01, 0.3),
+    }
+    best_search_binary = randomizedsearchcv_xgboost(X_train, y_binary_train,
+                                                    params)
+    # best_search_multi = randomizedsearchcv_xgboost(X_train, y_multi_train,
+    #                                                params)
+    return best_search_binary, best_search_multi
+
+
