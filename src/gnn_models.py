@@ -172,23 +172,30 @@ class SimpleGNN(nn.Module):
     """
 
     def __init__(self, input_features, hidden_size_1=128, hidden_size_2=64,
-                 conv_dropout_rate=0.6, classifier_dropout_rate=0.6):
+                 conv_dropout_rate=0.6, classifier_dropout_rate=0.6,
+                 norm=None
+
+                 ):
         super(SimpleGNN, self).__init__()
 
         # Two graph convolution layers
         self.conv1 = GCNConv(input_features, hidden_size_1)
-        self.bn1 = nn.BatchNorm1d(hidden_size_1)
+        # self.bn1 = nn.BatchNorm1d(hidden_size_1)
         self.dropout_conv1 = nn.Dropout(p=conv_dropout_rate)
+        self.norm = nn.LayerNorm(hidden_size_1)
 
-        self.conv2 = GCNConv(hidden_size_1, hidden_size_2)
-        self.bn2 = nn.BatchNorm1d(hidden_size_2)
-        self.dropout_conv2 = nn.Dropout(p=conv_dropout_rate)
+        # self.conv2 = GCNConv(hidden_size_1, hidden_size_2)
+        # self.bn2 = nn.BatchNorm1d(hidden_size_2)
+        # self.dropout_conv2 = nn.Dropout(p=conv_dropout_rate)
 
+        # Higher hidden units
         self.pool = GlobalAttention(gate_nn=nn.Sequential(
             nn.Linear(64, 32),
             nn.ReLU(),
             nn.Linear(32, 1)
         ))
+
+        # self.pool = aggr.MeanAggregation()
 
         self.classifier = nn.Sequential(
             nn.Linear(64, 32),
@@ -325,8 +332,11 @@ def simple_train_model_v2(
 
     # Loss function and optimizer
     criterion = nn.CrossEntropyLoss(weight=class_weights)
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
-                                 weight_decay=1e-5)
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=learning_rate,
+        # weight_decay=1e-5
+    )
 
     print(f"\nStarting training for {num_epochs} epochs...")
 
@@ -363,10 +373,11 @@ def simple_train_model_v2(
             batch = batch.to(device)
             outputs = model(batch.x, batch.edge_index,
                             batch.batch)
-            loss = criterion(outputs, batch.y)
+            loss = criterion(outputs.squeeze(), batch.y.squeeze())
 
             # Backward pass
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 10)
             optimizer.step()
 
             # Statistics

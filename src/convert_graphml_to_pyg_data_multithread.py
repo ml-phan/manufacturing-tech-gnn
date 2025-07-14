@@ -1,3 +1,4 @@
+import joblib
 import networkx as nx
 import os
 import pandas as pd
@@ -5,6 +6,7 @@ import pickle
 import torch
 import torch.nn as nn
 
+from pathlib import Path
 from multiprocessing import Pool, Manager
 from torch_geometric.data import Data
 from tqdm import tqdm
@@ -64,7 +66,9 @@ def simple_convert_graph(networkx_graph, label):
     return data
 
 
-def enhanced_convert_graph(networkx_graph, label, node_type_to_index):
+def enhanced_convert_graph(
+        networkx_graph, label, node_type_index, embedding_layer
+):
     nodes = list(networkx_graph.nodes())
     node_to_index = {node: i for i, node in enumerate(nodes)}
     # print(f"Graph has {len(nodes)} nodes")
@@ -78,14 +82,11 @@ def enhanced_convert_graph(networkx_graph, label, node_type_to_index):
     # print("Finished calculating raw features")
     # clustering_coeff = nx.clustering(networkx_graph)
 
-    num_types = len(node_type_to_index)
-    embedding_layer = nn.Embedding(num_types, 64)  # Example embedding size
-
     node_features = []
     for node in nodes:
         # Get node type (assuming it's stored as an attribute)
         node_type = networkx_graph.nodes[node].get('type', '')
-        type_idx = node_type_to_index.get(node_type,
+        type_idx = node_type_index.get(node_type,
                                           0)  # Default to 0 if unknown
         with torch.no_grad():
             type_embedding = embedding_layer(torch.tensor(type_idx)).numpy()
@@ -97,6 +98,7 @@ def enhanced_convert_graph(networkx_graph, label, node_type_to_index):
             page_rank[node],  # PageRank
             average_neighbor_degree[node],  # Average neighbor degree
             # clustering_coeff[node],  # Clustering coefficient
+            type_idx,
         ]
         features.extend(type_embedding.tolist())
         node_features.append(features)
@@ -134,18 +136,15 @@ def enhanced_convert_graph(networkx_graph, label, node_type_to_index):
     return data
 
 
-_node_type_to_index = None
-
 def init_worker(attribute_path):
-    global _node_type_to_index
     with open(attribute_path, "rb") as f:
         all_attribute_type = sorted(list(pickle.load(f)))
-    _node_type_to_index = {node_type: idx for idx, node_type in
-                           enumerate(all_attribute_type)}
+    return {node_type: idx for idx, node_type in
+            enumerate(all_attribute_type)}
 
 
 def process_single_file(args):
-    idx, row, save_dir = args
+    idx, row, save_dir, node_type_to_index, type_embedding = args
     file_path = row['graphml_file']
     label = row['is_cnc']
 
@@ -163,7 +162,8 @@ def process_single_file(args):
             }
 
         G = nx.read_graphml(file_path)
-        data = enhanced_convert_graph(G, label, _node_type_to_index)
+        data = enhanced_convert_graph(G, label, node_type_to_index,
+                                      type_embedding)
         torch.save(data, processed_path)
 
         return 'success', {
@@ -181,22 +181,24 @@ def process_single_file(args):
         }
 
 
-def preprocess_and_save_dataset_parallel(dataframe, save_dir,
-                                         attribute_type_path,
-                                         num_workers=None):
+def preprocess_and_save_dataset_parallel(
+        dataframe, save_dir,
+        node_type_to_index,
+        type_embedding,
+        num_workers=None
+):
     os.makedirs(save_dir, exist_ok=True)
 
     print(f"Pre-processing {len(dataframe)} samples...")
     print(f"Saving processed data to: {save_dir}")
-
-    tasks = [(idx, dataframe.iloc[idx], save_dir) for idx in
+    tasks = [(idx, dataframe.iloc[idx], save_dir, node_type_to_index,
+              type_embedding) for idx in
              range(len(dataframe))]
 
     processed_files = []
     failed_files = []
 
-    with Pool(processes=num_workers, initializer=init_worker,
-              initargs=(attribute_type_path,)) as pool:
+    with Pool(processes=num_workers) as pool:
         results = list(tqdm(pool.imap_unordered(process_single_file, tasks),
                             total=len(tasks)))
 
@@ -232,16 +234,24 @@ if __name__ == '__main__':
     # Example usage (adjust the save directory path)
     PROCESSED_DATA_DIR = r"E:\gnn_data\processed_step_data_full_node_features"
     os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
-
+    node_type_to_index = init_worker(r"..\all_attribute_type.pkl")
     # For testing, let's use a small subset first
     # Change this to df for your full dataset
-    test_df = df.head(10)  # Just 10 samples for testing
-
+    # test_df = df.head(10)  # Just 10 samples for testing
+    if Path(r"../type_embedding.pkl").exists():
+        print("Loading existing type embedding...")
+        with open(r"../"
+                  r"type_embedding.pkl", "rb") as f:
+            type_embedding = joblib.load(f)
+    else:
+        print("Embedding not found")
     print("Starting pre-processing...")
+
     processed_files, failed_files = preprocess_and_save_dataset_parallel(
         dataframe=df,
         save_dir=PROCESSED_DATA_DIR,
-        attribute_type_path=r"..\all_attribute_type.pkl",
+        node_type_to_index=node_type_to_index,
+        type_embedding=type_embedding,
         num_workers=14
     )
 
