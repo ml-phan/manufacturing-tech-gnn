@@ -40,7 +40,11 @@ def split_recursive(string, father_diff_par):
             else:
                 diff_num_parentesis -= 1
                 arguments.append(arg)
-
+    # arguments = [
+    #     item.strip()
+    #     for item in arguments
+    #     # if not isinstance(item, list)
+    # ]
     return arguments, off + 1
 
 

@@ -1,6 +1,6 @@
 from Node import GenericNode, FlatNode
 from utils import split_recursive, split_composed_arguments, remove_first_last_space
-
+import re
 
 def get_nodes_type_hystogramm(datas):
     nodes_types = {}
@@ -52,47 +52,63 @@ def get_nodes_from_datas(datas):
     fast_dict_search = {}
     all_flat_nodes = []
     composed_id = 0
+    print("Start parsing nodes from datas...")
+    number_of_printed_lines = 0
+    max_lines = 5
+    pattern = r'#\d+'
+
     for line in datas:
-        if line == 'ENDSEC':
-            break
-        id_type_arguments = line.split("=")
-        id = id_type_arguments[0]
-        id = remove_first_last_space(id)
+        try:
+            if line == 'ENDSEC':
+                break
+            id_type_arguments = line.split("=")
+            id = id_type_arguments[0].strip()  # Remove leading and trailing spaces
+            # id = remove_first_last_space(id)
 
-        type_arguments = id_type_arguments[1]
-        type_arguments = remove_first_last_space(type_arguments)
+            type_arguments = id_type_arguments[1].strip()
+            # type_arguments = remove_first_last_space(type_arguments)
 
-        if type_arguments[0] != '(':  # Normal elements
-            type_arguments = type_arguments.split("(", 1)
-            type = type_arguments[0]
-            arguments = type_arguments[1]
-            arguments, _ = split_recursive(arguments, 0)
-        else:  # Composed elements
-            multiple_obj = type_arguments[1:][:-1]
-            multiple_obj = split_composed_arguments(multiple_obj)
-            arguments = []
-            for i, m in enumerate(multiple_obj):
-                m_type_arguments = m.split('(', 1)
-                m_type = m_type_arguments[0]
-                m_arguments = m_type_arguments[1]
-                m_arguments, _ = split_recursive(m_arguments, 0)
-                m_id = '##' + str(composed_id)  # TODO fa casino??? --> no
-                composed_id += 1
-                # node = GenericNode(m_id, m_type, m_arguments)
-                flat_node = FlatNode(m_id, m_type, m_arguments)
-                # all_nodes.append(node)
-                all_flat_nodes.append(flat_node)
-                fast_dict_search[m_id] = flat_node
-                # Composed object properties
-                if i == 0:
-                    type = 'COMPOSED_' + m_type
-                arguments.append(m_id)
+            if type_arguments[0] != '(':  # Normal elements
+                type_arguments = type_arguments.split("(", 1)
+                type = type_arguments[0]
+                arguments = type_arguments[1]
+                # arguments, _ = split_recursive(arguments, 0)
 
-        # node = GenericNode(id, type, arguments)
-        flat_node = FlatNode(id, type, arguments)
-        fast_dict_search[id] = flat_node
-        # all_nodes.append(node)
-        all_flat_nodes.append(flat_node)
+                arguments = re.findall(pattern, arguments)
+                # if number_of_printed_lines < max_lines:
+                #     print(f" id: {id} - type_arguments: {type_arguments}")
+                #     print(f" type: {type} - arguments: {arguments}")
+                #     number_of_printed_lines += 1
+
+            else:  # Composed elements
+                multiple_obj = type_arguments[1:][:-1]
+                multiple_obj = split_composed_arguments(multiple_obj)
+                arguments = []
+                for i, m in enumerate(multiple_obj):
+                    m_type_arguments = m.split('(', 1)
+                    m_type = m_type_arguments[0]
+                    m_arguments = m_type_arguments[1]
+                    m_arguments = re.findall(pattern, m_arguments)
+                    m_id = '##' + str(composed_id)  # TODO fa casino??? --> no
+                    composed_id += 1
+                    # node = GenericNode(m_id, m_type, m_arguments)
+                    flat_node = FlatNode(m_id, m_type, m_arguments)
+                    # all_nodes.append(node)
+                    all_flat_nodes.append(flat_node)
+                    fast_dict_search[m_id] = flat_node
+                    # Composed object properties
+                    if i == 0:
+                        type = 'COMPOSED_' + m_type
+                    arguments.append(m_id)
+
+            # node = GenericNode(id, type, arguments)
+            flat_node = FlatNode(id, type, arguments)
+            fast_dict_search[id] = flat_node
+            # all_nodes.append(node)
+            all_flat_nodes.append(flat_node)
+        except Exception as e:
+            print(f"Error while parsing nodes from datas: {e}")
+            print(line)
 
     print("   Number of composed id: " + str(composed_id))
     return all_flat_nodes, fast_dict_search
