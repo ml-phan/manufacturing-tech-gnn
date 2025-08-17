@@ -43,7 +43,7 @@ if __name__ == '__main__':
     trained_model, new_tracker = simple_train_model_v4(
         dataset2,
         gnn_model=model,
-        num_epochs=50,
+        num_epochs=100,
         batch_size=128,
         learning_rate=0.001,
         start_index=0,

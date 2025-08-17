@@ -1473,6 +1473,7 @@ def simple_train_model_v4(
     train_dataset = Subset(dataset, train_indices)
     val_dataset = Subset(dataset, val_indices)
 
+    # Scale the dataset
     # Create data loaders
     train_loader = DataLoader(train_dataset, batch_size=batch_size,
                               shuffle=True)
@@ -1607,7 +1608,7 @@ def simple_train_model_v4(
             total_train_loss += loss.item()
 
             # Update all metrics
-            train_metrics.update(outputs, batch.y)
+            # train_metrics.update(outputs, batch.y)
             metrics_tracker["train_tracker"].update(outputs, batch.y)
 
             # Update progress bar
