@@ -252,6 +252,8 @@ def process_single_file(args):
         "bbox_height", "bbox_width", "bbox_depth", "bbox_volume",
         "bbox_area",
     ]
+    binary_fold_id = row['binary_fold']
+    multi_fold_id = row['multiclass_fold']
     global_features = np.array(row[global_features_cols], dtype=np.float32)
     global_features_tensor = torch.tensor(global_features,
                                           dtype=torch.float).unsqueeze(0)
@@ -308,6 +310,8 @@ def process_single_file(args):
             with open(r"E:\gnn_data\step_negative_area.txt", "a+") as f:
                 f.write(f"{file_path} - {data.x[:, 5:6].min().item()}\n")
 
+        data.binary = torch.tensor([binary_fold_id], dtype=torch.long)
+        data.multiclass = torch.tensor([multi_fold_id], dtype=torch.long)
         # if data.edge_attr is not None:
         #     data.edge_attr = torch.cat(
         #         (data.edge_attr[:, :2], data.edge_attr[:, 3:4],

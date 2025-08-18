@@ -1,25 +1,29 @@
+import gc
 import joblib
-import networkx as nx
+import numpy as np
 import os
 import pickle
 import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.data import ConcatDataset
 from torch_geometric.data import InMemoryDataset
-import glob
+
 
 from collections import Counter
+import optuna
 from pathlib import Path
+
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.utils import compute_class_weight
+
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import GCNConv, GATConv, GINConv, GlobalAttention, \
     GINEConv
-from torch_geometric.data import Data
 from torch_geometric.nn.aggr import AttentionalAggregation
 from torch.utils.data import Subset
-from torchmetrics import Accuracy, F1Score, AUROC, Precision, \
+from torchmetrics import Accuracy, F1Score, AUROC, \
     Recall, AveragePrecision, MetricCollection, MetricTracker
 from tqdm import tqdm
 
@@ -91,21 +95,11 @@ class FastSTEPDataset:
 class PyGInMemoryDataset(InMemoryDataset):
     """
     Custom InMemoryDataset that loads PyTorch Geometric Data objects from .pt files.
-
-    Args:
-        root (str): Root directory containing the .pt files
-        transform (callable, optional): A function/transform that takes in a Data object
-            and returns a transformed version
-        pre_transform (callable, optional): A function/transform that takes in a Data object
-            and returns a transformed version (applied before caching)
-        pre_filter (callable, optional): A function that takes in a Data object and
-            returns a boolean indicating whether the data should be included
-        pattern (str): File pattern to match (default: "*.pt")
     """
 
     def __init__(
             self,
-            root: str,
+            root,
             transform=None,
             pre_transform=None,
             pre_filter=None,
@@ -114,14 +108,11 @@ class PyGInMemoryDataset(InMemoryDataset):
         self.pattern = pattern
         super().__init__(root, transform, pre_transform, pre_filter)
         self.load(self.processed_paths[0])
-        self.data_list = []
 
     @property
     def raw_file_names(self):
-        """Returns list of raw file names in the raw directory"""
         # raw_dir = os.path.join(self.root, 'raw')
-        # if not os.path.exists(raw_dir):
-        #     return []
+        """Returns list of raw file names in the raw directory"""
         return [f for f in os.listdir(self.root) if f.endswith('.pt')]
 
     @property
@@ -136,16 +127,59 @@ class PyGInMemoryDataset(InMemoryDataset):
     def process(self):
         """Process raw data and save to processed directory"""
         # Look for .pt files in the root directory
-
+        data_list = [f for f in os.listdir(self.root) if f.endswith('.pt')]
         if self.pre_filter is not None:
-            self.data_list = [data for data in self.data_list if
-                              self.pre_filter(data)]
+            data_list = [data for data in self.data_list if
+                         self.pre_filter(data)]
 
         if self.pre_transform is not None:
-            self.data_list = [self.pre_transform(data) for data in
-                              self.data_list]
+            data_list = [self.pre_transform(data) for data in
+                         self.data_list]
 
-        self.save(self.data_list, self.processed_paths[0])
+        self.save(data_list, self.processed_paths[0])
+
+    def get_labels(self):
+        """
+        Retrieves all 'y' attributes from the data objects in the dataset.
+
+        Returns:
+            list: A list of all 'y' attributes.
+        """
+        all_labels = []
+        for data in self:
+            if hasattr(data, 'y'):
+                all_labels.append(data.y.item())
+        return all_labels
+
+
+class PyGInMemoryDataset_v2(InMemoryDataset):
+    """
+    InMemoryDataset that loads PyG Data objects from .pt files located in `root/raw`.
+    It collates them into a single processed file at `root/processed/data.pt`.
+    """
+
+    def __init__(self, root, transform=None):
+        super().__init__(root, transform)
+        self.load(self.processed_paths[0])
+
+    @property
+    def processed_file_names(self):
+        return 'data.pt'
+
+    def process(self):
+        file_list = list(Path(self.root).glob('*.pt'))
+        data_list = []
+        for file in file_list:
+            # Load the PyG Data object
+            data = torch.load(file, weights_only=False)
+
+            # Apply transform if provided
+            if self.transform is not None:
+                data = self.transform(data)
+
+            # Append to the list
+            data_list.append(data)
+        self.save(data_list, self.processed_paths[0])
 
     def get_labels(self):
         """
@@ -664,7 +698,9 @@ class GINCombinedv2(nn.Module):
         self.num_layers = len(hidden_sizes)
         self.hidden_sizes = hidden_sizes
         self.use_layer_norm = use_layer_norm
-
+        self.input_features = input_features
+        self.conv_dropout_rate = conv_dropout_rate
+        self.classifier_dropout_rate = classifier_dropout_rate
         # Create convolution layers dynamically
         self.convs = nn.ModuleList()
         self.dropouts = nn.ModuleList()
@@ -838,7 +874,7 @@ class GINECombined_v2(nn.Module):
         )
 
         self._print_model_info(
-            input_features, conv_dropout_rate, edge_features,
+            input_features, edge_features, conv_dropout_rate,
             classifier_dropout_rate
         )
 
@@ -1089,345 +1125,15 @@ def simple_train_model_v2(
     return model, training_history
 
 
-def simple_train_model_v3(
-        dataset,
-        gnn_model,
-        num_epochs=10,
-        batch_size=2,
-        learning_rate=0.001,
-        start_index=None,
-        num_graphs_to_use=None,
-):
-    """
-    Simple training function with progress tracking
-    """
-    num_graphs_to_use = min(num_graphs_to_use, len(dataset) - start_index)
-    # Split dataset into train/validation
-    training_start = time.perf_counter()
-    all_labels = dataset.get_labels()
-    labels = all_labels[start_index:start_index + num_graphs_to_use]
-    indices = list(range(start_index, start_index + num_graphs_to_use))
-    label_counts = Counter(labels)
-    num_classes = len(label_counts)
-    for label, count in label_counts.items():
-        print(f"Label {label}: {count} instances")
-    total_count = sum(label_counts.values())
-    for label, count in label_counts.items():
-        percentage = (count / total_count) * 100
-        print(f"Label {label}: {percentage:.2f}% of total instances")
-    # Calculating class weights
-    class_weights = [len(labels) / count for label, count in
-                     label_counts.items()]
-    class_weights.reverse()
-    class_weights = torch.tensor(class_weights,
-                                 dtype=torch.float).to(device)
-    print(f"Class weights: {class_weights}")
-
-    print("Splitting dataset into train and validation sets")
-    train_indices, val_indices = train_test_split(
-        indices,
-        test_size=0.2,
-        stratify=labels,
-        random_state=42
-    )
-
-    print(f"Train samples: {len(train_indices)}")
-    print(f"Validation samples: {len(val_indices)}")
-
-    # Create train and validation using Subset
-    train_dataset = Subset(dataset, train_indices)
-    val_dataset = Subset(dataset, val_indices)
-
-    # Create data loaders
-    train_loader = DataLoader(train_dataset, batch_size=batch_size,
-                              shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-
-    # Create model
-    model = gnn_model.to(device)
-
-    # Loss function and optimizer
-    # TODO: Focal Loss
-    criterion = nn.CrossEntropyLoss(weight=class_weights)
-    optimizer = torch.optim.Adam(
-        model.parameters(),
-        lr=learning_rate,
-        # weight_decay=1e-5
-    )
-
-    # Create MetricCollection for all metrics
-    metrics = MetricCollection({
-        'accuracy': Accuracy(task="multiclass", num_classes=num_classes),
-        'f1': F1Score(task="multiclass", num_classes=num_classes,
-                      average="weighted"),
-        'precision': Precision(task="multiclass", num_classes=num_classes,
-                               average="weighted"),
-        'recall': Recall(task="multiclass", num_classes=num_classes,
-                         average="weighted"),
-        'auroc': AUROC(task="multiclass", num_classes=num_classes)
-    }).to(device)
-    train_metrics = metrics.clone(prefix='train_')
-    val_metrics = metrics.clone(prefix='val_')
-
-    metric_tracker = MetricTracker(
-        MetricCollection(
-            {
-                **train_metrics,
-                **val_metrics,
-                "train_loss": nn.Module(),
-                "val_loss": nn.Module(),
-            }
-        )
-    )
-    # OneCycleLR scheduler
-    # total_steps = num_epochs * len(train_loader)
-    # scheduler = torch.optim.lr_scheduler.OneCycleLR(
-    #     optimizer,
-    #     max_lr=0.005,  # Peak learning rate (10x base rate)
-    #     total_steps=total_steps,  # Total number of batch steps
-    #     pct_start=0.3,  # 30% of training spent increasing LR
-    # )
-
-    # ReduceLROnPlateau scheduler
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer,
-        mode='max',  # Maximize F1 score
-        factor=0.7,
-        patience=7,
-        threshold=0.001,
-        min_lr=1e-6,
-    )
-
-    # Initialize all the metrics
-    train_accuracy_metric = Accuracy(task="multiclass",
-                                     num_classes=2).to(device)
-    val_accuracy_metric = Accuracy(task="multiclass",
-                                   num_classes=2).to(device)
-
-    train_f1_metric = F1Score(task="multiclass", num_classes=num_classes,
-                              average="weighted").to(device)
-    val_f1_metric = F1Score(task="multiclass", num_classes=num_classes,
-                            average="weighted").to(device)
-
-    train_precision_metric = Precision(task="multiclass",
-                                       num_classes=num_classes,
-                                       average="weighted").to(device)
-    val_precision_metric = Precision(task="multiclass",
-                                     num_classes=num_classes,
-                                     average="weighted").to(device)
-
-    train_recall_metric = Recall(task="multiclass",
-                                 num_classes=num_classes,
-                                 average="weighted").to(device)
-    val_recall_metric = Recall(task="multiclass", num_classes=num_classes,
-                               average="weighted").to(device)
-
-    train_auroc_metric = AUROC(task="multiclass",
-                               num_classes=num_classes).to(device)
-    val_auroc_metric = AUROC(task="multiclass",
-                             num_classes=num_classes).to(device)
-    # Progress tracking
-    training_history = {
-        'train_loss': [], 'train_acc': [], 'train_f1': [],
-        'train_precision': [], 'train_recall': [], 'train_auroc': [],
-        'val_loss': [], 'val_acc': [], 'val_f1': [], 'val_precision': [],
-        'val_recall': [], 'val_auroc': [],
-        'epoch': []
-    }
-
-    loss_history = {"train_loss": [], "val_loss": []}
-
-    best_val_f1 = 0.0
-    best_auroc = 0.0
-    best_model_state = None
-
-    print(f"\nStarting training for {num_epochs} epochs...")
-
-    # Training loop
-    for epoch in range(num_epochs):
-        # print("Training epoch:", epoch + 1)
-        # Training phase
-        model.train()
-        total_loss = 0
-
-        # Progress bar for training batches
-        train_pbar = tqdm(train_loader,
-                          desc=f'Epoch {epoch + 1}/{num_epochs} [Train]')
-
-        # Store all metrics in a list for easier management
-        train_metrics = [
-            train_accuracy_metric,
-            train_f1_metric,
-            train_precision_metric,
-            train_recall_metric,
-            train_auroc_metric
-        ]
-        val_metrics = [
-            val_accuracy_metric,
-            val_f1_metric,
-            val_precision_metric,
-            val_recall_metric,
-            val_auroc_metric
-        ]
-        # Train loop
-        for batch in train_pbar:
-            # Zero gradients
-            optimizer.zero_grad()
-
-            # Forward pass
-            # print(f"x shape: {batch.x.shape}")
-            # print(f"edge_index shape: {batch.edge_index.shape}")
-            # print(f"batch shape: {batch.batch.shape}")
-            # print(f"global_features shape: {batch.global_features.shape}")
-            batch = batch.to(device)
-            outputs = model(
-                batch.x, batch.edge_index,
-                batch.batch, batch.global_features
-            )
-            loss = criterion(outputs.squeeze(), batch.y.squeeze())
-
-            # Backward pass
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 10)
-            optimizer.step()
-
-            # Update the scheduler
-
-            # Statistics
-            total_loss += loss.item()
-            _, predicted = torch.max(outputs.data, 1)
-
-            # Update all metrics
-            for metric in train_metrics:
-                metric.update(outputs, batch.y)
-
-            # Update progress bar
-            current_acc = train_accuracy_metric.compute().item() * 100
-            current_f1 = train_f1_metric.compute().item()
-            train_pbar.set_postfix({
-                'loss': f'{loss.item():.4f}',
-                'acc': f'{current_acc:.2f}%',
-                'f1': f'{current_f1:.4f}',
-            })
-        # Compute final accuracy for the epoch and then reset
-        train_metrics_results = {
-            'acc': train_accuracy_metric.compute().item(),
-            'f1': train_f1_metric.compute().item(),
-            'precision': train_precision_metric.compute().item(),
-            'recall': train_recall_metric.compute().item(),
-            'auroc': train_auroc_metric.compute().item(),
-        }
-        for metric in train_metrics:
-            metric.reset()
-
-        # Validation phase
-        model.eval()
-        val_loss = 0
-
-        with torch.no_grad():
-            val_pbar = tqdm(val_loader,
-                            desc=f'Epoch {epoch + 1}/{num_epochs} [Val]')
-
-            for batch in val_pbar:
-                batch = batch.to(device)
-                outputs = model(
-                    batch.x, batch.edge_index,
-                    batch.batch, batch.global_features
-                )
-                loss = criterion(outputs, batch.y)
-
-                val_loss += loss.item()
-                _, predicted = torch.max(outputs.data, 1)
-                for metric in val_metrics:
-                    metric.update(outputs, batch.y)
-                scheduler.step(val_loss)
-                # Update progress bar
-                current_val_acc = val_accuracy_metric.compute().item() * 100
-                current_val_f1 = val_f1_metric.compute().item()
-                val_pbar.set_postfix({
-                    'loss': f'{loss.item():.4f}',
-                    'acc': f'{current_val_acc:.2f}%',
-                    'f1': f'{current_val_f1:.4f}',
-                })
-
-        # Compute final accuracy for the epoch and then reset
-        val_metrics_results = {
-            'acc': val_accuracy_metric.compute().item(),
-            'f1': val_f1_metric.compute().item(),
-            'precision': val_precision_metric.compute().item(),
-            'recall': val_recall_metric.compute().item(),
-            'auroc': val_auroc_metric.compute().item(),
-        }
-        for metric in val_metrics:
-            metric.reset()
-
-        # Calculate epoch statistics
-        avg_train_loss = total_loss / len(train_loader)
-        avg_val_loss = val_loss / len(val_loader)
-
-        # Store progress
-        training_history['epoch'].append(epoch + 1)
-        training_history['train_loss'].append(avg_train_loss)
-        training_history['train_acc'].append(
-            train_metrics_results['acc'] * 100)
-        training_history['train_f1'].append(train_metrics_results['f1'])
-        training_history['train_precision'].append(
-            train_metrics_results['precision'])
-        training_history['train_recall'].append(
-            train_metrics_results['recall'])
-        training_history['train_auroc'].append(
-            train_metrics_results['auroc'])
-
-        training_history['val_loss'].append(avg_val_loss)
-        training_history['val_acc'].append(val_metrics_results['acc'] * 100)
-        training_history['val_f1'].append(val_metrics_results['f1'])
-        training_history['val_precision'].append(
-            val_metrics_results['precision'])
-        training_history['val_recall'].append(
-            val_metrics_results['recall'])
-        training_history['val_auroc'].append(
-            val_metrics_results['auroc'])
-
-        # Save best model
-        if val_metrics_results["f1"] > best_val_f1:
-            best_val_f1 = val_metrics_results["f1"]
-            best_model_state = model.state_dict().copy()
-
-        # Print epoch summary
-        print(
-            f"Epoch {epoch + 1}/{num_epochs} - "
-            f"Train Loss: {avg_train_loss:.4f}, Acc: {train_metrics_results['acc']:.2%} | "
-            f"Val Loss: {avg_val_loss:.4f} | Acc: {val_metrics_results['acc']:.2%} | "
-            f"Val F1: {val_metrics_results['f1']:.4f} (Best: {best_val_f1:.4f}) | "
-            f"Val AUC: {val_metrics_results['auroc']:.4f}"
-        )
-        # print(f'Epoch {epoch + 1}/{num_epochs} Summary:')
-        # print(
-        #     f'  Train Loss: {avg_train_loss:.4f}, Train Acc: {train_acc:.2f}%')
-        # print(f'  Val Loss: {avg_val_loss:.4f}, Val Acc: {val_acc:.2f}%')
-        # print(f'  Best Val Acc: {best_val_acc:.2f}%')
-        # print('-' * 50)
-
-        # Clear CUDA cache to free memory in case of leaks
-        torch.cuda.empty_cache()
-
-    # Load best model
-    model.load_state_dict(best_model_state)
-    training_end = time.perf_counter()
-    print("Training completed!")
-    print(f"Training time: {training_end - training_start:.2f}")
-    print(f"Best validation f1: {best_val_f1:.4f}")
-
-    return model, training_history
-
-
 def simple_train_model_v4(
-        dataset,
+        dataset_dir,
+        validation_fold,
         gnn_model,
         num_epochs=10,
         batch_size=2,
         learning_rate=0.001,
-        start_index=None,
+        optimizer_scheduler="ReduceLROnPlateau",
+        start_index=0,
         num_graphs_to_use=None,
         metrics_tracker=None,
         random_state=None,
@@ -1435,44 +1141,97 @@ def simple_train_model_v4(
     """
     Simple training function with progress tracking
     """
-    num_graphs_to_use = min(num_graphs_to_use, len(dataset) - start_index)
     # Split dataset into train/validation
     training_start = time.perf_counter()
-    all_labels = dataset.get_labels()
-    labels = all_labels[start_index:start_index + num_graphs_to_use]
-    indices = list(range(start_index, start_index + num_graphs_to_use))
-    label_counts = Counter(labels)
-    num_classes = len(label_counts)
-    for label, count in label_counts.items():
-        print(f"Label {label}: {count} instances")
-    total_count = sum(label_counts.values())
-    for label, count in label_counts.items():
-        percentage = (count / total_count) * 100
-        print(f"Label {label}: {percentage:.2f}% of total instances")
-    # Calculating class weights
-    class_weights = [len(labels) / count for label, count in
-                     label_counts.items()]
-    class_weights.reverse()
-    class_weights = torch.tensor(class_weights,
-                                 dtype=torch.float).to(device)
+
+    if validation_fold is None:
+        dataset = PyGInMemoryDataset_v2(
+            root=str(dataset_dir))
+        all_labels = dataset.get_labels()
+        num_graphs_to_use = min(num_graphs_to_use, len(dataset) - start_index)
+        labels = all_labels[start_index:start_index + num_graphs_to_use]
+        indices = list(range(start_index, start_index + num_graphs_to_use))
+        label_counts = Counter(labels)
+        num_classes = len(label_counts)
+        for label, count in label_counts.items():
+            print(f"Label {label}: {count} instances")
+        total_count = sum(label_counts.values())
+        for label, count in label_counts.items():
+            percentage = (count / total_count) * 100
+            print(f"Label {label}: {percentage:.2f}% of total instances")
+        # Calculating class weights
+        class_weights = compute_class_weight(
+            class_weight='balanced',
+            classes=np.unique(labels),
+            y=labels
+        )
+
+        # Convert to dictionary format
+        class_weights = torch.FloatTensor(
+            [class_weights[0], class_weights[1]]).to(device)
+
+        print(
+            f"Splitting dataset using train_test_split with random_state {random_state}")
+        train_indices, val_indices = train_test_split(
+            indices,
+            test_size=0.2,
+            stratify=labels,
+            random_state=random_state,
+        )
+
+        print(f"Train samples: {len(train_indices)}")
+        print(f"Validation samples: {len(val_indices)}")
+        print(f"Random state: {random_state}")
+
+        # Create train and validation using Subset
+        train_dataset = Subset(dataset, train_indices)
+        val_dataset = Subset(dataset, val_indices)
+
+
+    else:
+        all_data_set_folds = []
+        for fold in tqdm(range(10), desc="Generating folds"):
+            dataset_path = Path(
+                dataset_dir) / f"fold_{str(fold).zfill(2)}"
+            if dataset_path.exists():
+                dataset = PyGInMemoryDataset_v2(
+                    root=str(dataset_path),
+                    transform=None,
+                )
+                all_data_set_folds.append(dataset)
+        train_folds = all_data_set_folds[
+                      :validation_fold] + all_data_set_folds[
+                                          validation_fold + 1:]
+        train_dataset = ConcatDataset(train_folds)
+        print(f"Using fold {validation_fold} for validation")
+        val_dataset = all_data_set_folds[validation_fold]
+        train_labels = [
+            inner_item
+            for item in train_folds
+            for inner_item in item.get_labels()]
+        val_labels = val_dataset.get_labels()
+        train_label_counts = Counter(train_labels)
+        val_label_counts = Counter(val_labels)
+
+        for label, count in train_label_counts.items():
+            print(f"Label {label}: {count} instances")
+        total_count = sum(train_label_counts.values())
+        for label, count in train_label_counts.items():
+            percentage = (count / total_count) * 100
+            print(f"Label {label}: {percentage:.2f}% of total instances")
+        num_classes = len(train_label_counts)
+
+        class_weights = compute_class_weight(
+            class_weight='balanced',
+            classes=np.unique(train_labels),
+            y=train_labels
+        )
+
+        # Convert to dictionary format
+        class_weights = torch.FloatTensor(
+            [class_weights[0], class_weights[1]]).to(device)
+
     print(f"Class weights: {class_weights}")
-
-    print("Splitting dataset into train and validation sets")
-    train_indices, val_indices = train_test_split(
-        indices,
-        test_size=0.2,
-        stratify=labels,
-        random_state=random_state,
-    )
-
-    print(f"Train samples: {len(train_indices)}")
-    print(f"Validation samples: {len(val_indices)}")
-    print(f"Random state: {random_state}")
-
-    # Create train and validation using Subset
-    train_dataset = Subset(dataset, train_indices)
-    val_dataset = Subset(dataset, val_indices)
-
     # Scale the dataset
     # Create data loaders
     train_loader = DataLoader(train_dataset, batch_size=batch_size,
@@ -1492,18 +1251,18 @@ def simple_train_model_v4(
     )
     print(f"Using optimizer: {optimizer.__class__.__name__}")
     # Create MetricCollection for all metrics
-    metrics = MetricCollection({
-        'accuracy': Accuracy(task="multiclass", num_classes=num_classes),
-        'f1': F1Score(task="multiclass", num_classes=num_classes,
-                      average="weighted"),
-        'precision': Precision(task="multiclass", num_classes=num_classes,
-                               average="weighted"),
-        'recall': Recall(task="multiclass", num_classes=num_classes,
-                         average="weighted"),
-        'auroc': AUROC(task="multiclass", num_classes=num_classes)
-    }).to(device)
-    train_metrics = metrics.clone(prefix='train_')
-    val_metrics = metrics.clone(prefix='val_')
+    # metrics = MetricCollection({
+    #     'accuracy': Accuracy(task="multiclass", num_classes=num_classes),
+    #     'f1': F1Score(task="multiclass", num_classes=num_classes,
+    #                   average="weighted"),
+    #     'precision': Precision(task="multiclass", num_classes=num_classes,
+    #                            average="weighted"),
+    #     'recall': Recall(task="multiclass", num_classes=num_classes,
+    #                      average="weighted"),
+    #     'auroc': AUROC(task="multiclass", num_classes=num_classes)
+    # }).to(device)
+    # train_metrics = metrics.clone(prefix='train_')
+    # val_metrics = metrics.clone(prefix='val_')
 
     if metrics_tracker is None:
         metrics_tracker = {
@@ -1537,24 +1296,26 @@ def simple_train_model_v4(
         metrics_tracker["train_tracker"].to(device)
         metrics_tracker["val_tracker"].to(device)
 
-    # OneCycleLR scheduler
-    # total_steps = num_epochs * len(train_loader)
-    # scheduler = torch.optim.lr_scheduler.OneCycleLR(
-    #     optimizer,
-    #     max_lr=0.005,  # Peak learning rate (10x base rate)
-    #     total_steps=total_steps,  # Total number of batch steps
-    #     pct_start=0.3,  # 30% of training spent increasing LR
-    # )
+    if optimizer_scheduler == "OneCycleLR":
+        # OneCycleLR scheduler
+        total_steps = num_epochs * len(train_loader)
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=learning_rate * 10,  # Peak learning rate (10x base rate)
+            total_steps=total_steps,  # Total number of batch steps
+            pct_start=0.3,  # 30% of training spent increasing LR
+        )
+    else:
+        # ReduceLROnPlateau scheduler
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode='max',  # Maximize auroc
+            factor=0.7,
+            patience=10,
+            threshold=0.001,
+            min_lr=1e-6,
+        )
 
-    # ReduceLROnPlateau scheduler
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer,
-        mode='max',  # Maximize F1 score
-        factor=0.7,
-        patience=7,
-        threshold=0.001,
-        min_lr=1e-6,
-    )
     print(f"Using LR scheduler: {scheduler.__class__.__name__}")
 
     loss_history = {"train_loss": [], "val_loss": []}
@@ -1571,8 +1332,6 @@ def simple_train_model_v4(
         # Training phase
         model.train()
         total_train_loss = 0
-        # metric_tracker.increment()
-        # train_metrics_tracker.increment()
         metrics_tracker["train_tracker"].increment()
         metrics_tracker["val_tracker"].increment()
         # Progress bar for training batches
@@ -1612,15 +1371,19 @@ def simple_train_model_v4(
             metrics_tracker["train_tracker"].update(outputs, batch.y)
 
             # Update progress bar
-            current_metrics = train_metrics.compute()
+            # current_metrics = train_metrics.compute()
+            current_metrics2 = metrics_tracker["train_tracker"].compute()
             train_pbar.set_postfix({
                 'loss': f'{loss.item():.4f}',
-                'acc': f'{current_metrics["train_accuracy"] * 100:.2f}%',
-                'f1': f'{current_metrics["train_f1"]:.4f}',
-                'auroc': f'{current_metrics["train_auroc"]:.4f}',
+                # 'acc': f'{current_metrics["train_accuracy"] * 100:.2f}%',
+                'acc2': f'{current_metrics2["acc"] * 100:.2f}%',
+                # 'f1': f'{current_metrics["train_f1"]:.4f}',
+                'f1_2': f'{current_metrics2["f1"]:.4f}',
+                # 'auroc': f'{current_metrics["train_auroc"]:.4f}',
+                'auroc2': f'{current_metrics2["auroc"]:.4f}',
             })
         # Compute final accuracy for the epoch and then reset
-        train_results = train_metrics.compute()
+        train_results = metrics_tracker["train_tracker"].compute()
         avg_train_loss = total_train_loss / len(train_loader)
 
         # Validation phase
@@ -1643,21 +1406,25 @@ def simple_train_model_v4(
                 loss = criterion(outputs, batch.y)
 
                 toal_val_loss += loss.item()
-                val_metrics.update(outputs, batch.y)
+                # val_metrics.update(outputs, batch.y)
                 metrics_tracker["val_tracker"].update(outputs, batch.y)
 
                 # Update progress bar
-                current_val_metrics = val_metrics.compute()
+                # current_val_metrics = val_metrics.compute()
+                current_val_metrics2 = metrics_tracker["val_tracker"].compute()
 
                 val_pbar.set_postfix({
                     'loss': f'{loss.item():.4f}',
-                    'acc': f'{current_val_metrics["val_accuracy"] * 100:.2f}%',
-                    'f1': f'{current_val_metrics["val_f1"]:.4f}',
-                    'auroc': f'{current_val_metrics["val_auroc"]:.4f}',
+                    # 'acc': f'{current_val_metrics["val_accuracy"] * 100:.2f}%',
+                    'acc2': f'{current_val_metrics2["acc"] * 100:.2f}%',
+                    # 'f1': f'{current_val_metrics["val_f1"]:.4f}',
+                    'f1_2': f'{current_val_metrics2["f1"]:.4f}',
+                    # 'auroc': f'{current_val_metrics["val_auroc"]:.4f}',
+                    'auroc2': f'{current_val_metrics2["auroc"]:.4f}',
                 })
 
         # Compute final accuracy for the epoch and then reset
-        val_results = val_metrics.compute()
+        val_results = metrics_tracker["val_tracker"].compute()
         avg_val_loss = toal_val_loss / len(val_loader)
 
         # Store loss history manually
@@ -1665,33 +1432,34 @@ def simple_train_model_v4(
         loss_history['val_loss'].append(avg_val_loss)
 
         # Update the scheduler with validation auroc
-        scheduler.step(val_results['val_auroc'])
+        scheduler.step(val_results['auroc'])
 
         # Update metric tracker
-        epoch_metrics = {**train_results, **val_results}
+        # epoch_metrics = {**train_results, **val_results}
         # metric_tracker.log(epoch_metrics)
 
         # Save best model
-        if val_results["val_auroc"] > best_auroc:
-            best_auroc = val_results["val_auroc"]
+        if val_results["auroc"] > best_auroc:
+            best_auroc = val_results["auroc"]
             best_model_state = model.state_dict().copy()
 
         # Save best F1 score
-        if val_results["val_f1"] > best_val_f1:
-            best_val_f1 = val_results["val_f1"]
+        if val_results["f1"] > best_val_f1:
+            best_val_f1 = val_results["f1"]
 
         # Print epoch summary
         print(
             f"Epoch {epoch + 1}/{num_epochs} - "
-            f"Train Loss: {avg_train_loss:.4f}, Acc: {train_results['train_accuracy'].item():.2%} | "
-            f"Val Loss: {avg_val_loss:.4f}, Acc: {val_results['val_accuracy'].item():.2%} | "
-            f"Val F1: {val_results['val_f1']:.4f} (Best: {best_val_f1:.4f}) | "
-            f"Val AUC: {val_results['val_auroc']:.4f} (Best: {best_auroc:.4f})"
+            f"Train Loss: {avg_train_loss:.4f}, Acc: {train_results['acc'].item():.2%} | "
+            f"Val Loss: {avg_val_loss:.4f}, Acc: {val_results['acc'].item():.2%} | "
+            f"Val F1: {val_results['f1']:.4f} (Best: {best_val_f1:.4f}) | "
+            f"Val AUC: {val_results['auroc']:.4f} (Best: {best_auroc:.4f})"
         )
 
         # Reset all metrics Clear CUDA cache to free memory in case of leaks
-        train_metrics.reset()
-        val_metrics.reset()
+        # No reset when using MetricTracker
+        # metrics_tracker["train_tracker"].reset()
+        # metrics_tracker["val_tracker"].reset()
         torch.cuda.empty_cache()
 
     # Load best model
@@ -1702,15 +1470,88 @@ def simple_train_model_v4(
     print(f"Best validation F1: {best_val_f1:.4f}")
     print(f"Best validation AUROC: {best_auroc:.4f}")
 
-    # Get complete training history from tracker
-    training_history = None
-    # training_history = metric_tracker.compute_all()
-
-    # Add loss history
-    # for key, values in loss_history.items():
-    #     training_history[key] = torch.tensor(values)
-    #
-    # # Add epoch numbers
-    # training_history['epoch'] = torch.arange(1, num_epochs + 1)
-
     return model, metrics_tracker
+
+
+def optuna_gnn(n_trials=1):
+    fold = 0
+    # dataset_path = Path(
+    #     rf"E:\gnn_data\pyg_data_v2_scaled\fold_{str(fold).zfill(2)}")
+    dataset_path = Path(r"E:\gnn_data\pyg_data_v2_scaled")
+    dataset = PyGInMemoryDataset(
+        root=str(dataset_path),
+        pattern="*.pt",
+        transform=None,
+        pre_transform=None,
+        pre_filter=None
+    )
+    tracker_path = Path(r"E:\gnn_data\optuna_tracker_v2")
+
+    if tracker_path.exists():
+        with open(tracker_path, 'rb') as f:
+            tracker = pickle.load(f)
+    else:
+        tracker = None
+    fold_results = {}
+
+    def objective(trial):
+        try:
+            num_layers = trial.suggest_int("num_layers", 1, 3)
+            hidden_size = trial.suggest_int("hidden_size", 64, 512)
+
+            model_params = {
+                "hidden_sizes": [hidden_size] * num_layers,
+                "conv_dropout_rate": trial.suggest_float("conv_dropout_rate", 0.1,
+                                                         0.5),
+                "classifier_dropout_rate": trial.suggest_float(
+                    "classifier_dropout_rate", 0.1, 0.5),
+                "use_layer_norm": trial.suggest_categorical(
+                    "use_layer_norm", [True, False]),
+                "pool_hidden_size": trial.suggest_int("pool_hidden_size", 128, 1024)
+            }
+            print(model_params)
+            train_function_params = {
+                "num_epochs": trial.suggest_int("num_epochs", 100, 200),
+                "batch_size": trial.suggest_int("batch_size", 32, 128),
+                "learning_rate": trial.suggest_float(
+                    "learning_rate", 1e-4, 1e-2),
+                "optimizer_scheduler": trial.suggest_categorical(
+                    "optimizer_scheduler", ["OneCycleLR", "ReduceLROnPlateau"])
+            }
+
+            model = GINECombined_v2(
+                input_features=dataset[0].x.shape[1],
+                global_feature_dim=dataset[0].global_features.shape[1],
+                edge_features=dataset[0].edge_attr.shape[1],
+                **model_params
+            )
+
+            trained_model, new_tracker = simple_train_model_v4(
+                dataset_dir=dataset_path,
+                validation_fold=0,
+                gnn_model=model,
+                **train_function_params,
+                metrics_tracker=tracker
+            )
+            best_auroc = new_tracker["val_tracker"].compute()["auroc"].item()
+            return best_auroc
+        except Exception as e:
+            print(f"Error during trial: {e}")
+            # Check if trial has attribute number then print it out
+            if hasattr(trial, 'number'):
+                print(f"Trial number: {trial.number}")
+            return 0.0
+
+    study = optuna.create_study(direction="maximize",
+                                sampler=optuna.samplers.CmaEsSampler(
+                                    seed=100))
+    study.optimize(objective, n_trials=n_trials, n_jobs=-1,
+                   show_progress_bar=False)
+
+    fold_results[f"fold_{fold}"] = {
+        'best_params': study.best_params,
+        'best_score': study.best_value,
+        'study': study
+    }
+
+    return fold_results

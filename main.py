@@ -1,6 +1,7 @@
 from src.gnn_models import *
 
-if __name__ == '__main__':
+
+def training_pipeline():
     PROCESSED_DATA_DIR = r"E:\gnn_data\pyg_data_v2_scaled"
 
     dataset2 = PyGInMemoryDataset(
@@ -55,3 +56,9 @@ if __name__ == '__main__':
     torch.save(trained_model.state_dict(), model_save_path)
     with open(tracker_save_path, "wb") as f:
         joblib.dump(new_tracker, f)
+
+
+if __name__ == '__main__':
+    fold_results = optuna_gnn(1)
+    with open("optuna_results.pkl", "wb") as f:
+        joblib.dump(fold_results, f)
