@@ -1,17 +1,10 @@
 import pandas as pd
-import numpy as np
 
-from pprint import pprint
 from scipy.stats import randint, uniform
 from sklearn.utils.class_weight import compute_sample_weight
-from sklearn.model_selection import RandomizedSearchCV
 from sklearn.model_selection import train_test_split
+from sklearn.model_selection import RandomizedSearchCV
 from xgboost import XGBClassifier
-from sklearn.metrics import (
-    accuracy_score, f1_score, top_k_accuracy_score,
-    classification_report, confusion_matrix, roc_auc_score,
-    average_precision_score
-)
 
 
 def train_xgboost(
@@ -130,5 +123,6 @@ def training_pipeline_xgboost(X_train, y_binary_train, y_multi_train=None):
     # best_search_multi = randomizedsearchcv_xgboost(X_train, y_multi_train,
     #                                                params)
     return best_search_binary, best_search_multi
+
 
 

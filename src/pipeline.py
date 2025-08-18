@@ -1,78 +1,18 @@
-import pandas as pd
-
 from src.training import *
 from src.evaluation import *
 from src.visualization import *
 
+import pickle
+import os
+import time
+
+import optuna
+import threading
 import torch
 import torch.nn.functional as F
 from sklearn.preprocessing import PowerTransformer, StandardScaler
 from pathlib import Path
 from tqdm import tqdm
-import pickle
-import os
-
-
-def training_one_fold(dataset: pd.DataFrame):
-    results_binary = []
-    results_multi = []
-    for fold in range(dataset.binary_fold.nunique()):
-        print(f"Training fold {fold}...")
-        features = [
-            "faces", "edges", "vertices", "quantity",
-            "height", "width", "depth", "volume", "area",
-            "bbox_height", "bbox_width", "bbox_depth", "bbox_volume",
-            "bbox_area",
-        ]
-        train_data = dataset[dataset.binary_fold == fold].reset_index(
-            drop=True)
-        X = train_data[features]
-        X_train, X_test, y_train_index, y_test_index = train_test_split(
-            X,
-            range(len(X)),
-            test_size=0.2,
-            random_state=42,
-            stratify=train_data["is_cnc"],
-        )
-        # y_multi_train = train_data["multiclass_labels"].iloc[y_train_index]
-        # y_multi_test = train_data["multiclass_labels"].iloc[y_test_index]
-
-        y_binary_train = train_data["is_cnc"].iloc[y_train_index]
-        y_binary_test = train_data["is_cnc"].iloc[y_test_index]
-        best_search_binary, best_search_multi = training_pipeline_xgboost(
-            X_train,
-            y_binary_train,
-            # y_multi_train,
-        )
-        # Multiclass predictions
-        # y_multi_pred = best_search_multi.best_estimator_.predict(X_test)
-        # y_multi_prob = best_search_multi.best_estimator_.predict_proba(X_test)
-
-        # Binary predictions
-        y_binary_pred = best_search_binary.best_estimator_.predict(X_test)
-        y_binary_prob = best_search_binary.best_estimator_.predict_proba(
-            X_test)
-        # Evaluate binary classification
-        metrics_binary = evaluate_classification(
-            y_true=y_binary_test,
-            y_pred=y_binary_pred,
-            y_prob=y_binary_prob,
-        )
-        # metrics_multi = evaluate_classification(
-        #     y_true=y_multi_test,
-        #     y_pred=y_multi_pred,
-        #     y_prob=y_multi_prob,
-        #     # top_k=3
-        # )
-        results_binary.append(metrics_binary)
-        # results_multi = pd.concat([results_multi, metrics_multi])
-    result_df_binary = pd.DataFrame(results_binary).T
-    result_df_binary.columns = [f"Fold {i}" for i in
-                                range(len(results_binary))]
-
-    results_df_multi = pd.DataFrame()  # Placeholder for multi-class results
-
-    return result_df_binary, results_df_multi
 
 
 class PyGDatasetScaler:
@@ -175,7 +115,6 @@ class PyGDatasetScaler:
             ],
             dim=1)
 
-
         # Handle global_features
         global_features_scaled = torch.tensor(
             self.global_features_scaler.transform(
@@ -267,7 +206,8 @@ def process_dataset(input_dir, output_dir, scaler_path=None, fit_scalers=True):
     print(f"Processing complete! Transformed files saved to {output_path}")
 
     # Print dimension information
-    sample_data = torch.load(output_path / data_files[0].name, weights_only=False)
+    sample_data = torch.load(output_path / data_files[0].name,
+                             weights_only=False)
     print(f"\nDimension changes:")
     print(f"Original x shape: {torch.load(data_files[0]).x.shape}")
     print(f"Transformed x shape: {sample_data.x.shape}")
@@ -275,6 +215,89 @@ def process_dataset(input_dir, output_dir, scaler_path=None, fit_scalers=True):
         f"Original edge_attr shape: {torch.load(data_files[0]).edge_attr.shape}")
     print(f"Transformed edge_attr shape: {sample_data.edge_attr.shape}")
     print(f"Global features shape: {sample_data.global_features.shape}")
+
+
+
+def xgboost_optuna(data, n_trials=2000, features=None):
+    fold_results = {}
+    for fold in sorted(data.binary_fold.unique()):
+        print(f"Optimizing fold {fold}:")
+        # Samples not in fold will be training data
+        X_train = data[data.binary_fold != fold][features]
+        y_train = data[data.binary_fold != fold]["is_cnc"]
+
+        # Samples in fold will be test data
+        X_test = data[data.binary_fold == fold][features]
+        y_test = data[data.binary_fold == fold]["is_cnc"]
+
+        def objective(trial):
+            try:
+                params = {
+                    "n_estimators": trial.suggest_int("n_estimators", 50, 300),
+                    "max_depth": trial.suggest_int("max_depth", 3, 10),
+                    "learning_rate": trial.suggest_float("learning_rate",
+                                                         0.005,
+                                                         0.3),
+                    "min_child_weight": trial.suggest_int("min_child_weight",
+                                                          1, 10),
+                    "subsample": trial.suggest_float("subsample", 0.6, 1.0),
+                    "colsample_bytree": trial.suggest_float("colsample_bytree",
+                                                            0.6, 1.0),
+                    "reg_alpha": trial.suggest_float("reg_alpha", 0, 10),
+                    "reg_lambda": trial.suggest_float("reg_lambda", 0, 10),
+                }
+
+                sample_weight = compute_sample_weight(
+                    class_weight="balanced", y=y_train
+                )
+
+                model = XGBClassifier(**params, use_label_encoder=False,
+                                      eval_metric='logloss')
+                model.fit(X_train, y_train, sample_weight=sample_weight)
+
+                y_pred = model.predict(X_test)
+                y_prob = model.predict_proba(X_test)
+
+                train_metrics = evaluate_classification(
+                    y_true=y_train,
+                    y_pred=model.predict(X_train),
+                    y_prob=model.predict_proba(X_train),
+                )
+
+                val_metrics = evaluate_classification(
+                    y_true=y_test,
+                    y_pred=y_pred,
+                    y_prob=y_prob,
+                )
+
+                trial.set_user_attr("train_auroc", train_metrics["roc_auc"])
+                return val_metrics['roc_auc']
+            # Return low score if an error occurs
+            except Exception as e:
+                print(f"Error during trial number: {trial.number}: {e}")
+                return 0.0
+
+        study = optuna.create_study(direction="maximize",
+                                    sampler=optuna.samplers.CmaEsSampler(
+                                        seed=100))
+        study.optimize(objective, n_trials=n_trials, n_jobs=-1,
+                       show_progress_bar=True)
+        # pbar_cb = MinimalTqdmCallback(
+        #     total_trials=n_trials, desc=f"Fold {fold}",
+        #     flush_secs=1.0, step=50, disable=False
+        # )
+        # try:
+        #     study.optimize(objective, n_trials=n_trials, n_jobs=-1,
+        #                    callbacks=[pbar_cb])
+        # finally:
+        #     pbar_cb.close()
+
+        fold_results[f"fold_{fold}"] = {
+            'best_params': study.best_params,
+            'best_score': study.best_value,
+            'study': study
+        }
+    return fold_results
 
 
 # Example usage

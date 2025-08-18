@@ -1,10 +1,9 @@
 import numpy as np
 import pandas as pd
 
-from pprint import pprint
 from sklearn.metrics import (
-    accuracy_score, f1_score, top_k_accuracy_score,
-    classification_report, confusion_matrix, roc_auc_score, average_precision_score
+    accuracy_score, f1_score, classification_report,
+    confusion_matrix, roc_auc_score, average_precision_score
 )
 
 
