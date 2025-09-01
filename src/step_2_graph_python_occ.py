@@ -231,7 +231,8 @@ if __name__ == "__main__":
     graph_dir = Path("E:\gnn_data\graphml_files_v2")
     graph_dir.mkdir(parents=True, exist_ok=True)
 
-    step_files = list(Path("E:\gnn_data\step_files").glob("*.*"))
+    # step_files = list(Path("E:\gnn_data\step_files").glob("*.*"))
+    step_files = [Path(r"E:\gnn_data\square_pocket.step")]
     with Pool(processes=14) as pool:
         results = list(
             tqdm(

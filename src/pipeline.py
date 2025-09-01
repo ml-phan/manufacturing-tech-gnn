@@ -220,7 +220,8 @@ def process_dataset(input_dir, output_dir, scaler_path=None, fit_scalers=True):
 
 def xgboost_optuna(data, n_trials=2000, features=None):
     fold_results = {}
-    for fold in sorted(data.binary_fold.unique()):
+    # for fold in sorted(data.binary_fold.unique()):
+    for fold in [0]:
         print(f"Optimizing fold {fold}:")
         # Samples not in fold will be training data
         X_train = data[data.binary_fold != fold][features]
@@ -271,6 +272,8 @@ def xgboost_optuna(data, n_trials=2000, features=None):
                 )
 
                 trial.set_user_attr("train_auroc", train_metrics["roc_auc"])
+                trial.set_user_attr("train_f1", train_metrics["f1_macro"])
+                trial.set_user_attr("val_f1", val_metrics["f1_macro"])
                 return val_metrics['roc_auc']
             # Return low score if an error occurs
             except Exception as e:
@@ -282,15 +285,6 @@ def xgboost_optuna(data, n_trials=2000, features=None):
                                         seed=100))
         study.optimize(objective, n_trials=n_trials, n_jobs=-1,
                        show_progress_bar=True)
-        # pbar_cb = MinimalTqdmCallback(
-        #     total_trials=n_trials, desc=f"Fold {fold}",
-        #     flush_secs=1.0, step=50, disable=False
-        # )
-        # try:
-        #     study.optimize(objective, n_trials=n_trials, n_jobs=-1,
-        #                    callbacks=[pbar_cb])
-        # finally:
-        #     pbar_cb.close()
 
         fold_results[f"fold_{fold}"] = {
             'best_params': study.best_params,
@@ -300,7 +294,43 @@ def xgboost_optuna(data, n_trials=2000, features=None):
     return fold_results
 
 
-# Example usage
+def xgboost_optuna_run_with_best_params(data, best_params, features=None):
+    fold_results = {}
+    for fold in sorted(data.binary_fold.unique()):
+        print(f"Optimizing fold {fold}:")
+        # Samples not in fold will be training data
+        X_train = data[data.binary_fold != fold][features]
+        y_train = data[data.binary_fold != fold]["is_cnc"]
+
+        # Samples in fold will be test data
+        X_test = data[data.binary_fold == fold][features]
+        y_test = data[data.binary_fold == fold]["is_cnc"]
+
+        sample_weight = compute_sample_weight(
+            class_weight="balanced", y=y_train
+        )
+
+        model = XGBClassifier(**best_params, eval_metric='logloss')
+        model.fit(X_train, y_train, sample_weight=sample_weight)
+
+        y_pred = model.predict(X_test)
+        y_prob = model.predict_proba(X_test)
+
+        train_metrics = evaluate_classification(
+            y_true=y_train,
+            y_pred=model.predict(X_train),
+            y_prob=model.predict_proba(X_train),
+        )
+
+        val_metrics = evaluate_classification(
+            y_true=y_test,
+            y_pred=y_pred,
+            y_prob=y_prob,
+        )
+
+        fold_results[f"fold_{fold}"] = val_metrics
+    return fold_results
+
 if __name__ == "__main__":
     # Define paths
     input_directory = r"E:\gnn_data\pyg_data_v2"  # Replace with your input directory

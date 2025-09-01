@@ -1,3 +1,7 @@
+import datetime
+import json
+
+import dill
 import gc
 import joblib
 import numpy as np
@@ -18,6 +22,7 @@ from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sklearn.utils import compute_class_weight
 
+from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import GCNConv, GATConv, GINConv, GlobalAttention, \
     GINEConv
@@ -26,6 +31,8 @@ from torch.utils.data import Subset
 from torchmetrics import Accuracy, F1Score, AUROC, \
     Recall, AveragePrecision, MetricCollection, MetricTracker
 from tqdm import tqdm
+from sklearn.preprocessing import PowerTransformer, \
+        MinMaxScaler, OneHotEncoder
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -193,6 +200,102 @@ class PyGInMemoryDataset_v2(InMemoryDataset):
             if hasattr(data, 'y'):
                 all_labels.append(data.y.item())
         return all_labels
+
+
+class GraphCustomTransform:
+    def __init__(self,
+                 node_power_transformer, node_minmax_scaler,
+                 node_onehot_encoder,
+                 edge_onehot_encoder_0, edge_onehot_encoder_1,
+                 edge_minmax_scaler, global_minmax_scaler):
+        self.node_power_transformer = node_power_transformer
+        self.node_minmax_scaler = node_minmax_scaler
+        self.node_onehot_encoder = node_onehot_encoder
+
+        self.edge_onehot_encoder_0 = edge_onehot_encoder_0
+        self.edge_onehot_encoder_1 = edge_onehot_encoder_1
+        self.edge_minmax_scaler = edge_minmax_scaler
+
+        self.global_minmax_scaler = global_minmax_scaler
+
+    def __call__(self, data):
+        data = data.clone()
+
+        # Process node features (Data.x)
+        if data.x is not None:
+            x = data.x.numpy()
+
+            # Discard x[:, 0]
+            # Apply PowerTransformer + MinMaxScaler on x[:, 1:13]
+            x_power_part = x[:, 1:13]
+            x_power_transformed = self.node_power_transformer.transform(
+                x_power_part)
+            x_power_scaled = self.node_minmax_scaler.transform(
+                x_power_transformed)
+
+            # Keep x[:, 13:17] the same (assuming you meant 13:17 based on your indexing)
+            x_unchanged = x[:, 13:18]
+
+            # One-hot encode x[:, 17] (assuming 0-based indexing, so column 17 is what you called 18)
+            x_onehot_part = x[:, 18:19]  # Keep as 2D
+            x_onehot_encoded = self.node_onehot_encoder.transform(
+                x_onehot_part)
+
+            # Concatenate all parts
+            new_x = np.concatenate([
+                x_power_scaled,  # columns 1:13 -> power + minmax scaled
+                x_unchanged,  # columns 13:17 -> unchanged
+                x_onehot_encoded
+                # column 17 -> one-hot encoded (10 categories)
+            ], axis=1)
+
+            data.x = torch.tensor(new_x, dtype=torch.float32)
+
+        # Process edge features (Data.edge_attr)
+        if data.edge_attr is not None:
+            edge_attr = data.edge_attr.numpy()
+
+            # One-hot encode edge_attr[:, 0] with 3 categories (2, 3, 4)
+            edge_onehot_0 = self.edge_onehot_encoder_0.transform(
+                edge_attr[:, 0:1])
+
+            # One-hot encode edge_attr[:, 1] with 7 categories
+            edge_onehot_1 = self.edge_onehot_encoder_1.transform(
+                edge_attr[:, 1:2])
+
+            # Apply PowerTransformer + MinMaxScaler on edge_attr[:, 2:4]
+            edge_power_part = edge_attr[:, 2:4]
+            edge_log_transformed = np.log1p(edge_power_part)
+            edge_scaled = self.edge_minmax_scaler.transform(
+                edge_log_transformed)
+
+            # Keep edge_attr[:, 4:6] the same
+            edge_unchanged = edge_attr[:, 4:6]
+
+            # Concatenate all parts
+            new_edge_attr = np.concatenate([
+                edge_onehot_0, # column 0 -> one-hot encoded (3 categories)
+                edge_onehot_1, # column 1 -> one-hot encoded (7 categories)
+                edge_scaled,  # columns 2:4 -> power + minmax scaled
+                edge_unchanged  # columns 4:6 -> unchanged
+            ], axis=1)
+
+            data.edge_attr = torch.tensor(new_edge_attr,
+                                          dtype=torch.float32)
+
+        # Process global features (Data.global_features)
+        if data.global_features is not None:
+            global_features = data.global_features.numpy()
+
+            # Apply PowerTransformer + MinMaxScaler on all global features
+            global_log_transformed = np.log1p(global_features)
+            global_scaled = self.global_minmax_scaler.transform(
+                global_log_transformed)
+
+            data.global_features = torch.tensor(global_scaled,
+                                                dtype=torch.float32)
+
+        return data
 
 
 class DynamicGNN(nn.Module):
@@ -875,11 +978,12 @@ class GINECombined_v2(nn.Module):
 
         self._print_model_info(
             input_features, edge_features, conv_dropout_rate,
-            classifier_dropout_rate
+            classifier_dropout_rate, pool_hidden_size
         )
 
     def _print_model_info(self, input_features, edge_features,
-                          conv_dropout_rate, classifier_dropout_rate):
+                          conv_dropout_rate, classifier_dropout_rate,
+                          pool_hidden_size):
         """Print model configuration"""
         print(f"Created GINE model:")
         print(f"- Input features: {input_features}")
@@ -889,6 +993,7 @@ class GINECombined_v2(nn.Module):
         print(f"- Output classes: 2")
         print(f"- Convolution dropout rate: {conv_dropout_rate}")
         print(f"- Classifier dropout rate: {classifier_dropout_rate}")
+        print(f"- Pooling hidden layer size: {pool_hidden_size}")
         print(f"- Layer normalization: {self.use_layer_norm}")
 
     def forward(self, x, edge_index, edge_attr, batch, global_features):
@@ -922,6 +1027,140 @@ class GINECombined_v2(nn.Module):
         output = self.classifier(combined_features)
 
         return output
+
+
+def scaler_creation(dataset_dir, validation_fold):
+
+    # First, collect all training data to fit scalers
+    all_train_data = []
+    for fold_idx in range(10):
+        if fold_idx != validation_fold:
+            dataset_path = Path(dataset_dir) / f"fold_{str(fold_idx).zfill(2)}"
+            if dataset_path.exists():
+                dataset = PyGInMemoryDataset_v2(root=str(dataset_path),
+                                                transform=None)
+                all_train_data.extend([data for data in dataset])
+
+    # Initialize all transformers
+    # For node features (Data.x)
+    node_power_transformer = PowerTransformer()
+    node_minmax_scaler = MinMaxScaler()
+    node_onehot_encoder = OneHotEncoder(categories=[list(range(10))],
+                                        sparse_output=False)
+
+    # For edge features (Data.edge_attr)
+    edge_onehot_encoder_0 = OneHotEncoder(categories=[[2, 3, 4]],
+                                          sparse_output=False)
+    edge_onehot_encoder_1 = OneHotEncoder(categories=[list(range(7))],
+                                          sparse_output=False)
+    edge_minmax_scaler = MinMaxScaler()
+
+    # For global features
+    global_minmax_scaler = MinMaxScaler()
+
+    # Collect features for fitting from training data only
+    print("Collecting training features for fitting transformers...")
+
+    # Node features
+    train_node_power_features = []  # x[:, 1:13]
+    train_node_onehot_features = []  # x[:, 18]
+
+    # Edge features
+    train_edge_onehot_0_features = []  # edge_attr[:, 0]
+    train_edge_onehot_1_features = []  # edge_attr[:, 1]
+    train_edge_power_features = []  # edge_attr[:, 2:4]
+
+    # Global features
+    train_global_features = []
+
+    for data in all_train_data:
+        # Node features
+        train_node_power_features.append(data.x[:, 1:13])
+        train_node_onehot_features.append(data.x[:, 18:19])  # Keep as 2D
+
+        # Edge features
+        train_edge_onehot_0_features.append(
+            data.edge_attr[:, 0:1])  # Keep as 2D
+        train_edge_onehot_1_features.append(
+            data.edge_attr[:, 1:2])  # Keep as 2D
+        train_edge_power_features.append(data.edge_attr[:, 2:4])
+
+        # Global features
+        train_global_features.append(data.global_features)
+
+    # Concatenate all training features
+    train_node_power_concat = torch.cat(train_node_power_features,
+                                        dim=0).numpy()
+    train_node_onehot_concat = torch.cat(train_node_onehot_features,
+                                         dim=0).numpy()
+
+    train_edge_onehot_0_concat = torch.cat(train_edge_onehot_0_features,
+                                           dim=0).numpy()
+    train_edge_onehot_1_concat = torch.cat(train_edge_onehot_1_features,
+                                           dim=0).numpy()
+    train_edge_power_concat = torch.cat(train_edge_power_features,
+                                        dim=0).numpy()
+
+    train_global_concat = torch.cat(train_global_features, dim=0).numpy()
+
+    print("Fitting transformers on training data...")
+
+    # Fit node transformers
+    node_power_transformed = node_power_transformer.fit_transform(
+        train_node_power_concat)
+    node_minmax_scaler.fit(node_power_transformed)
+    node_onehot_encoder.fit(train_node_onehot_concat)
+
+    # Fit edge transformers
+    edge_onehot_encoder_0.fit(train_edge_onehot_0_concat)
+    edge_onehot_encoder_1.fit(train_edge_onehot_1_concat)
+    edge_power_transformed = np.log1p(train_edge_power_concat)
+    edge_minmax_scaler.fit(edge_power_transformed)
+
+    # Fit global transformers
+    global_power_transformed = np.log1p(train_global_concat)
+    global_minmax_scaler.fit(global_power_transformed)
+
+    # Return all scalers as dictionary
+    return {
+        'node_power_transformer': node_power_transformer,
+        'node_minmax_scaler': node_minmax_scaler,
+        'node_onehot_encoder': node_onehot_encoder,
+        'edge_onehot_encoder_0': edge_onehot_encoder_0,
+        'edge_onehot_encoder_1': edge_onehot_encoder_1,
+        'edge_minmax_scaler': edge_minmax_scaler,
+        'global_minmax_scaler': global_minmax_scaler
+    }
+
+
+def dataset_scaling(dataset_dir, validation_fold):
+    # Create the transform instance
+    with open(Path(dataset_dir) / f"scalers_fold_{str(validation_fold).zfill(2)}.pkl",
+            "rb") as f:
+        scalers = joblib.load(f)
+    transform = GraphCustomTransform(**scalers)
+
+    print("Loading datasets with custom transform...")
+
+    # Now load datasets with custom scaling
+    all_data_set_folds = []
+    for fold in tqdm(range(10), desc="Generating folds"):
+        dataset_path = Path(dataset_dir) / f"fold_{str(fold).zfill(2)}"
+        if dataset_path.exists():
+            dataset = PyGInMemoryDataset_v2(
+                root=str(dataset_path),
+                transform=transform,
+            )
+            all_data_set_folds.append(dataset)
+
+    # Create train/val split as before
+    train_folds = all_data_set_folds[:validation_fold] + all_data_set_folds[
+                                                         validation_fold + 1:]
+    # train_dataset = ConcatDataset(train_folds)
+    val_dataset = all_data_set_folds[validation_fold]
+
+    print("Dataset preprocessing complete!")
+    return train_folds, val_dataset, transform
 
 
 def simple_train_model_v2(
@@ -1128,7 +1367,8 @@ def simple_train_model_v2(
 def simple_train_model_v4(
         dataset_dir,
         validation_fold,
-        gnn_model,
+        model_params=None,
+        gnn_model=None,
         num_epochs=10,
         batch_size=2,
         learning_rate=0.001,
@@ -1137,6 +1377,7 @@ def simple_train_model_v4(
         num_graphs_to_use=None,
         metrics_tracker=None,
         random_state=None,
+        trial_progress=r"1/1",
 ):
     """
     Simple training function with progress tracking
@@ -1153,12 +1394,10 @@ def simple_train_model_v4(
         indices = list(range(start_index, start_index + num_graphs_to_use))
         label_counts = Counter(labels)
         num_classes = len(label_counts)
-        for label, count in label_counts.items():
-            print(f"Label {label}: {count} instances")
         total_count = sum(label_counts.values())
         for label, count in label_counts.items():
             percentage = (count / total_count) * 100
-            print(f"Label {label}: {percentage:.2f}% of total instances")
+            print(f"Label {label}: {count} instances ({percentage:.2f}%)")
         # Calculating class weights
         class_weights = compute_class_weight(
             class_weight='balanced',
@@ -1170,8 +1409,6 @@ def simple_train_model_v4(
         class_weights = torch.FloatTensor(
             [class_weights[0], class_weights[1]]).to(device)
 
-        print(
-            f"Splitting dataset using train_test_split with random_state {random_state}")
         train_indices, val_indices = train_test_split(
             indices,
             test_size=0.2,
@@ -1202,8 +1439,12 @@ def simple_train_model_v4(
         train_folds = all_data_set_folds[
                       :validation_fold] + all_data_set_folds[
                                           validation_fold + 1:]
+        # train_folds, val_dataset, transform = dataset_scaling(
+        #     dataset_dir, validation_fold,
+        #     scalers=None
+        # )
         train_dataset = ConcatDataset(train_folds)
-        print(f"Using fold {validation_fold} for validation")
+        # print(f"Using fold {validation_fold} for validation")
         val_dataset = all_data_set_folds[validation_fold]
         train_labels = [
             inner_item
@@ -1212,13 +1453,10 @@ def simple_train_model_v4(
         val_labels = val_dataset.get_labels()
         train_label_counts = Counter(train_labels)
         val_label_counts = Counter(val_labels)
-
-        for label, count in train_label_counts.items():
-            print(f"Label {label}: {count} instances")
         total_count = sum(train_label_counts.values())
         for label, count in train_label_counts.items():
             percentage = (count / total_count) * 100
-            print(f"Label {label}: {percentage:.2f}% of total instances")
+            print(f"Label {label}: {count} instances ({percentage:.2f}%)")
         num_classes = len(train_label_counts)
 
         class_weights = compute_class_weight(
@@ -1239,17 +1477,28 @@ def simple_train_model_v4(
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     # Create model
-    model = gnn_model.to(device)
-
+    if model_params:
+        model = GINECombined_v2(
+            input_features=train_dataset[0].x.shape[1],
+            global_feature_dim=train_dataset[0].global_features.shape[1],
+            edge_features=train_dataset[0].edge_attr.shape[1],
+            **model_params
+        ).to(device)
+    elif gnn_model:
+        model = gnn_model.to(device)
+    else:
+        print("Either model_params or gnn_model must be provided")
+        return None, None
     # Loss function and optimizer
     # TODO: Focal Loss
     criterion = nn.CrossEntropyLoss(weight=class_weights)
-    optimizer = torch.optim.Adam(
+    optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=learning_rate,
-        # weight_decay=1e-5
+        weight_decay=1e-5
     )
-    print(f"Using optimizer: {optimizer.__class__.__name__}")
+    print(f"Optimizer: {optimizer.__class__.__name__}", end=". ")
+    print(f"Learning rate: {learning_rate}", end=". ")
     # Create MetricCollection for all metrics
     # metrics = MetricCollection({
     #     'accuracy': Accuracy(task="multiclass", num_classes=num_classes),
@@ -1274,7 +1523,11 @@ def simple_train_model_v4(
                         "f1": F1Score(
                             task="multiclass",
                             num_classes=num_classes,
-                            average="weighted"),
+                            average="macro"),
+                        "avp": AveragePrecision(
+                            task="multiclass",
+                            num_classes=num_classes,
+                            average="macro"),
                         "auroc": AUROC(
                             task="multiclass", num_classes=num_classes)
                     }
@@ -1287,7 +1540,11 @@ def simple_train_model_v4(
                         "f1": F1Score(
                             task="multiclass",
                             num_classes=num_classes,
-                            average="weighted"),
+                            average="macro"),
+                        "avp": AveragePrecision(
+                            task="multiclass",
+                            num_classes=num_classes,
+                            average="macro"),
                         "auroc": AUROC(
                             task="multiclass", num_classes=num_classes)
                     }
@@ -1316,7 +1573,7 @@ def simple_train_model_v4(
             min_lr=1e-6,
         )
 
-    print(f"Using LR scheduler: {scheduler.__class__.__name__}")
+    print(f"LR scheduler: {scheduler.__class__.__name__}")
 
     loss_history = {"train_loss": [], "val_loss": []}
 
@@ -1336,7 +1593,7 @@ def simple_train_model_v4(
         metrics_tracker["val_tracker"].increment()
         # Progress bar for training batches
         train_pbar = tqdm(train_loader,
-                          desc=f'Epoch {epoch + 1}/{num_epochs} [Train]')
+                          desc=f'Epoch {epoch + 1}/{num_epochs} Trial {trial_progress} [Train]')
 
         # Train loop
         for batch in train_pbar:
@@ -1392,7 +1649,7 @@ def simple_train_model_v4(
 
         with torch.no_grad():
             val_pbar = tqdm(val_loader,
-                            desc=f'Epoch {epoch + 1}/{num_epochs} [Val]')
+                            desc=f'Epoch {epoch + 1}/{num_epochs} Trial {trial_progress} [Val]')
 
             for batch in val_pbar:
                 batch = batch.to(device)
@@ -1432,7 +1689,10 @@ def simple_train_model_v4(
         loss_history['val_loss'].append(avg_val_loss)
 
         # Update the scheduler with validation auroc
-        scheduler.step(val_results['auroc'])
+        if optimizer_scheduler == "ReduceLROnPlateau":
+            scheduler.step(val_results['auroc'])
+        else:
+            scheduler.step()
 
         # Update metric tracker
         # epoch_metrics = {**train_results, **val_results}
@@ -1465,26 +1725,14 @@ def simple_train_model_v4(
     # Load best model
     model.load_state_dict(best_model_state)
     training_end = time.perf_counter()
-    print("Training completed!")
-    print(f"Training time: {training_end - training_start:.2f}")
-    print(f"Best validation F1: {best_val_f1:.4f}")
-    print(f"Best validation AUROC: {best_auroc:.4f}")
+    print(f"Training completed. Training time: {training_end - training_start:.2f}.", end=" ")
+    print(f"Best Val F1: {best_val_f1:.4f}. Best Val AUROC: {best_auroc:.4f}")
 
     return model, metrics_tracker
 
 
-def optuna_gnn(n_trials=1):
-    fold = 0
-    # dataset_path = Path(
-    #     rf"E:\gnn_data\pyg_data_v2_scaled\fold_{str(fold).zfill(2)}")
-    dataset_path = Path(r"E:\gnn_data\pyg_data_v2_scaled")
-    dataset = PyGInMemoryDataset(
-        root=str(dataset_path),
-        pattern="*.pt",
-        transform=None,
-        pre_transform=None,
-        pre_filter=None
-    )
+def optuna_gnn(dataset_path, validation_fold=0, n_trials=1, db_path=None):
+    start_time = time.perf_counter()
     tracker_path = Path(r"E:\gnn_data\optuna_tracker_v2")
 
     if tracker_path.exists():
@@ -1492,48 +1740,80 @@ def optuna_gnn(n_trials=1):
             tracker = pickle.load(f)
     else:
         tracker = None
+
     fold_results = {}
 
+    results_dir = Path(r"gnn_optuna_database")
+    results_dir.mkdir(exist_ok=True)
+    if db_path is None:
+        db_path = results_dir / f"optuna_gine_fold_{validation_fold}.db"
+
+    study = optuna.create_study(
+        study_name=f"optuna_gine_fold_{validation_fold}",
+        storage=f"sqlite:///{db_path}",
+        load_if_exists=True,
+        direction="maximize",
+        sampler=optuna.samplers.TPESampler(seed=100)
+    )
+    existing_trials = len(study.get_trials())
     def objective(trial):
         try:
             num_layers = trial.suggest_int("num_layers", 1, 3)
-            hidden_size = trial.suggest_int("hidden_size", 64, 512)
+            hidden_size = trial.suggest_int('hidden_size', 128, 512)
 
             model_params = {
                 "hidden_sizes": [hidden_size] * num_layers,
-                "conv_dropout_rate": trial.suggest_float("conv_dropout_rate", 0.1,
+                "conv_dropout_rate": trial.suggest_float("conv_dropout_rate", 0.01,
                                                          0.5),
                 "classifier_dropout_rate": trial.suggest_float(
-                    "classifier_dropout_rate", 0.1, 0.5),
+                    "classifier_dropout_rate", 0.01, 0.5),
                 "use_layer_norm": trial.suggest_categorical(
                     "use_layer_norm", [True, False]),
                 "pool_hidden_size": trial.suggest_int("pool_hidden_size", 128, 1024)
             }
             print(model_params)
             train_function_params = {
-                "num_epochs": trial.suggest_int("num_epochs", 100, 200),
+                "num_epochs": trial.suggest_int("num_epochs", 100, 300),
                 "batch_size": trial.suggest_int("batch_size", 32, 128),
                 "learning_rate": trial.suggest_float(
-                    "learning_rate", 1e-4, 1e-2),
+                    "learning_rate", 1e-5, 1e-2, log=True),
                 "optimizer_scheduler": trial.suggest_categorical(
                     "optimizer_scheduler", ["OneCycleLR", "ReduceLROnPlateau"])
             }
-
-            model = GINECombined_v2(
-                input_features=dataset[0].x.shape[1],
-                global_feature_dim=dataset[0].global_features.shape[1],
-                edge_features=dataset[0].edge_attr.shape[1],
-                **model_params
-            )
-
+            print(train_function_params)
+            total_trials = n_trials + existing_trials
+            trial_progress = rf"{trial.number}/{total_trials}"
             trained_model, new_tracker = simple_train_model_v4(
                 dataset_dir=dataset_path,
-                validation_fold=0,
-                gnn_model=model,
+                validation_fold=validation_fold,
+                model_params=model_params,
+                gnn_model=None,
                 **train_function_params,
-                metrics_tracker=tracker
+                metrics_tracker=tracker,
+                trial_progress=trial_progress,
             )
-            best_auroc = new_tracker["val_tracker"].compute()["auroc"].item()
+            best_val_metric = new_tracker["val_tracker"].best_metric()
+            best_auroc = best_val_metric["auroc"]
+            # Save relevant metrics into file
+            fold_results[f"fold_{validation_fold}_trial_{trial.number}"] = {
+                'model_params': model_params,
+                'train_function_params': train_function_params,
+                'best_metric': best_val_metric,
+            }
+            # Append results to json file
+            results_path = Path(
+                fr"optuna_gine_fold_{validation_fold}_results.json")
+            if results_path.exists():
+                with open(results_path, 'r') as f:
+                    all_results = json.load(f)
+            else:
+                all_results = {}
+            all_results[f"trial_{trial.number}"] = fold_results[f"fold_{validation_fold}_trial_{trial.number}"]
+            with open(results_path, 'w') as f:
+                json.dump(all_results, f, indent=4)
+
+
+            gc.collect()
             return best_auroc
         except Exception as e:
             print(f"Error during trial: {e}")
@@ -1542,16 +1822,100 @@ def optuna_gnn(n_trials=1):
                 print(f"Trial number: {trial.number}")
             return 0.0
 
-    study = optuna.create_study(direction="maximize",
-                                sampler=optuna.samplers.CmaEsSampler(
-                                    seed=100))
-    study.optimize(objective, n_trials=n_trials, n_jobs=-1,
+    study.optimize(objective, n_trials=n_trials, n_jobs=1,
                    show_progress_bar=False)
 
-    fold_results[f"fold_{fold}"] = {
+    fold_results[f"fold_{validation_fold}"] = {
         'best_params': study.best_params,
         'best_score': study.best_value,
         'study': study
     }
+    end_time = time.perf_counter()
+    print(f"Study time: {end_time - start_time:.2f}")
+    return fold_results, db_path
+
+
+# Run with new data using best parameters
+def run_with_best_params(study):
+
+    # Get best parameters
+    best_params = study.best_params
+    print("Best parameters:")
+    for param, value in best_params.items():
+        print(f"  {param}: {value}")
+
+    # Extract parameters
+    model_params = {
+        "hidden_sizes": [best_params["hidden_size"]] * best_params[
+            "num_layers"],
+        "conv_dropout_rate": best_params["conv_dropout_rate"],
+        "classifier_dropout_rate": best_params["classifier_dropout_rate"],
+        "use_layer_norm": best_params["use_layer_norm"],
+        "pool_hidden_size": best_params["pool_hidden_size"]
+    }
+
+    train_function_params = {
+        "num_epochs": best_params["num_epochs"],
+        "batch_size": best_params["batch_size"],
+        "learning_rate": best_params["learning_rate"],
+        "optimizer_scheduler": best_params["optimizer_scheduler"]
+    }
+
+    fold_results = {}
+
+    for fold in range(10):
+
+        # Train with new data
+        print(f"Training fold {fold} with best parameters...")
+        dataset_path = Path(
+            rf"E:\gnn_data\pyg_data_v2_scaled_validation_fold_{str(fold).zfill(2)}")
+        # model = GINECombined_v2(
+        #     input_features=dataset[0].x.shape[1],
+        #     global_feature_dim=dataset[0].global_features.shape[1],
+        #     edge_features=dataset[0].edge_attr.shape[1],
+        #     **model_params
+        # )
+
+        # trained_model, tracker = simple_train_model_v4(
+        #     dataset_dir=dataset_path,
+        #     validation_fold=fold,
+        #     gnn_model=model,
+        #     **train_function_params,
+        #     metrics_tracker=None
+        # )
+        trained_model, new_tracker = simple_train_model_v4(
+            dataset_dir=dataset_path,
+            validation_fold=fold,
+            model_params=model_params,
+            gnn_model=None,
+            **train_function_params,
+            metrics_tracker=None,
+        )
+        # Save model to file
+        model_name = fr"model_states\optuna_gine_modelstate_fold_{fold}.pth"
+        torch.save(trained_model.state_dict(), model_name)
+
+        # Save model object to pickle
+        model_obj_name = fr"model_states\optuna_gine_model_fold_{fold}.pkl"
+        with open(model_obj_name, 'wb') as f:
+            joblib.dump(trained_model, f)
+
+        print(f"Model saved to {model_name}")
+        # Save fold results
+        results = {
+            'train_tracker': new_tracker["train_tracker"].best_metric(),
+            'val_tracker': new_tracker["val_tracker"].best_metric(),
+        }
+        # save results to json
+        results_path = Path(
+            fr"optuna_gine_all_fold_results.json")
+        if results_path.exists():
+            with open(results_path, 'r') as f:
+                fold_results = json.load(f)
+        else:
+            fold_results = {}
+        fold_results[f"fold_{fold}"] = results
+        with open(results_path, 'w') as f:
+            json.dump(fold_results, f, indent=4)
 
     return fold_results

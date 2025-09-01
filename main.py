@@ -1,10 +1,11 @@
 from src.gnn_models import *
+import datetime
 
 
 def training_pipeline():
     PROCESSED_DATA_DIR = r"E:\gnn_data\pyg_data_v2_scaled"
 
-    dataset2 = PyGInMemoryDataset(
+    dataset = PyGInMemoryDataset(
         root=PROCESSED_DATA_DIR,
         pattern="*.pt",
         transform=None,
@@ -13,9 +14,9 @@ def training_pipeline():
     )
 
     model = GINECombined_v2(
-        input_features=dataset2[0].x.shape[1],
-        global_feature_dim=dataset2[0].global_features.shape[1],
-        edge_features=dataset2[0].edge_attr.shape[1],
+        input_features=dataset[0].x.shape[1],
+        global_feature_dim=dataset[0].global_features.shape[1],
+        edge_features=dataset[0].edge_attr.shape[1],
         hidden_sizes=[512, 256],
         conv_dropout_rate=0.1,
         classifier_dropout_rate=0.1,
@@ -42,11 +43,14 @@ def training_pipeline():
         print(
             f"Metrics tracker file {tracker_save_path} does not exist. Initializing a new tracker.")
     trained_model, new_tracker = simple_train_model_v4(
-        dataset2,
+        PROCESSED_DATA_DIR,
+        validation_fold=0,
+        model_params=None,
         gnn_model=model,
         num_epochs=100,
         batch_size=128,
         learning_rate=0.001,
+        optimizer_scheduler="OneCycleLR",
         start_index=0,
         num_graphs_to_use=63000,
         metrics_tracker=tracker,
@@ -59,6 +63,21 @@ def training_pipeline():
 
 
 if __name__ == '__main__':
-    fold_results = optuna_gnn(1)
-    with open("optuna_results.pkl", "wb") as f:
-        joblib.dump(fold_results, f)
+    # dataset_path = Path(r"E:\gnn_data\pyg_data_v2_scaled_validation_fold_00")
+    # validation_fold = 0
+    # results_dir = Path(r"gnn_optuna_database")
+    # results_dir.mkdir(exist_ok=True)
+    # db_path = results_dir / f"optuna_gine_fold_{validation_fold}.db"
+    # fold_results, database_path = optuna_gnn(
+    #     dataset_path, validation_fold=validation_fold,
+    #     n_trials=10, db_path=db_path
+    # )
+    # now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    # with open(f"optuna_results_{now}.pkl", "wb") as f:
+    #     joblib.dump(fold_results, f)
+
+    study_name = "optuna_gine_fold_0"
+    storage = "sqlite:///gnn_optuna_database/optuna_gine_fold_0.db"
+
+    study = optuna.load_study(study_name=study_name, storage=storage)
+    run_with_best_params(study)
