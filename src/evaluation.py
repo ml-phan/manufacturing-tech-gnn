@@ -20,8 +20,9 @@ def evaluate_classification(y_true, y_pred, y_prob=None, top_k=3):
 
     if len(np.unique(y_true)) == 2:
         metrics["roc_auc"] = roc_auc_score(y_true, y_prob[:, 1])
-        metrics["average_precision"] = average_precision_score(y_true,
-                                                               y_prob[:, 1])
+        metrics["average_precision"] = average_precision_score(
+            y_true, y_prob[:, 1], average="macro",
+        )
     else:
         metrics["roc_auc"] = roc_auc_score(y_true, y_prob, multi_class='ovr')
         metrics["average_precision"] = average_precision_score(

@@ -13,6 +13,55 @@ from torch_geometric.data import Data
 from tqdm import tqdm
 
 
+def simple_convert_graph(networkx_graph, label, node_type_index):
+    nodes = list(networkx_graph.nodes())
+    node_to_index = {node: i for i, node in enumerate(nodes)}
+    # print(f"Graph has {len(nodes)} nodes")
+
+    node_features = []
+    for node in nodes:
+        # Get node type (assuming it's stored as an attribute)
+        node_type = networkx_graph.nodes[node].get('type', '')
+        type_idx = node_type_index.get(node_type,
+                                       0)  # Default to 0 if unknown
+        features = [
+            type_idx,
+        ]
+        node_features.append(features)
+
+    # Convert to PyTorch tensor
+    x = torch.tensor(node_features, dtype=torch.float)
+    # print(f"Node features shape: {x.shape}")
+
+    # Step 3c: Create edge list
+    edge_list = []
+    for edge in networkx_graph.edges():
+        source, target = edge
+        # Convert node names to indices
+        source_idx = node_to_index[source]
+        target_idx = node_to_index[target]
+
+        # Add both directions (undirected graph)
+        edge_list.append([source_idx, target_idx])
+        edge_list.append([target_idx, source_idx])
+
+    # Convert to PyTorch tensor and transpose
+    if edge_list:
+        edge_index = torch.tensor(edge_list, dtype=torch.long).t()
+    else:
+        edge_index = torch.empty((2, 0), dtype=torch.long)
+
+    # print(f"Edge index shape: {edge_index.shape}")
+
+    # Step 3d: Create label tensor
+    y = torch.tensor([label], dtype=torch.long)
+
+    # Step 3e: Create PyTorch Geometric Data object
+    data = Data(x=x, edge_index=edge_index, y=y)
+
+    return data
+
+
 def enhanced_convert_graph(
         networkx_graph, label, node_type_index
 ):
@@ -271,44 +320,49 @@ def process_single_file(args):
             }
 
         G = nx.read_graphml(file_path)
-        data = enhanced_convert_graph_global_features_v2(
+        # data = enhanced_convert_graph_global_features_v2(
+        #     networkx_graph=G,
+        #     label=label,
+        #     label_multi=label_multi,
+        #     node_type_index=node_type_to_index,
+        #     global_features=global_features_tensor,
+        #     item_id=item_id
+        # )
+        data = simple_convert_graph(
             networkx_graph=G,
             label=label,
-            label_multi=label_multi,
-            node_type_index=node_type_to_index,
-            global_features=global_features_tensor,
-            item_id=item_id
+            node_type_index=node_type_to_index
         )
-        for key, value in data:
-            if 0 in value.shape:
-                return "fail", {
-                    'path': file_path,
-                    'error': f'Empty graph data in attribute {key}',
-                    'index': idx
-                }
-            if torch.isinf(value).any():
-                return "fail", {
-                    'path': file_path,
-                    'error': f'Infinite values in attribute {key}',
-                    'index': idx
-                }
-        if data.x is not None:
-            data.x = torch.cat(
-                (
-                    data.x[:, :5],
-                    data.x[:, 9:17],
-                    data.x[:, 5:9],
-                    data.x[:, 17:],
-                ),
-                dim=1
-
-            )
-        if (data.x > 1e8).any():
-            print(f"Warning: Large values found in node features for {file_path}. ")
-        if (data.x[:, 5:6] < 0).any():
-            print(f"Warning: Negative values found in node features for {file_path}. ")
-            with open(r"E:\gnn_data\step_negative_area.txt", "a+") as f:
-                f.write(f"{file_path} - {data.x[:, 5:6].min().item()}\n")
+        # for key, value in data:
+        #     if 0 in value.shape:
+        #         return "fail", {
+        #             'path': file_path,
+        #             'error': f'Empty graph data in attribute {key}',
+        #             'index': idx
+        #         }
+        #     if torch.isinf(value).any():
+        #         return "fail", {
+        #             'path': file_path,
+        #             'error': f'Infinite values in attribute {key}',
+        #             'index': idx
+        #         }
+        # if data.x is not None:
+        #     data.x = torch.cat(
+        #         (
+        #             data.x[:, :5],
+        #             data.x[:, 9:17],
+        #             data.x[:, 5:9],
+        #             data.x[:, 17:],
+        #         ),
+        #         dim=1
+        #
+        #     )
+        # if (data.x > 1e8).any():
+        #     print(f"Warning: Large values found in node features for {file_path}. ")
+        # if (data.x[:, 5:6] < 0).any():
+        #     print(f"Warning: Negative values found in node features for {file_path}. ")
+        #     with open(r"E:\gnn_data\step_negative_area.txt", "a+") as f:
+        #         f.write(f"{file_path} - {data.x[:, 5:6].min().item()}\n")
 
         data.binary = torch.tensor([binary_fold_id], dtype=torch.long)
         data.multiclass = torch.tensor([multi_fold_id], dtype=torch.long)
@@ -384,14 +438,14 @@ def preprocess_and_save_dataset_parallel(
 if __name__ == '__main__':
     df = pd.read_csv(r"../data/synced_dataset_final.csv")
     # Example usage (adjust the save directory path)
-    PROCESSED_DATA_DIR = r"E:\gnn_data\pyg_data_v2"
+    PROCESSED_DATA_DIR = r"E:\gnn_data\pyg_data_v1_simple"
     os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
     node_type_to_index = init_worker(r"..\all_attribute_type.pkl")
     # For testing, let's use a small subset first
     # Change this to df for your full dataset
     # test_df = df.head(10)  # Just 10 samples for testing
     print("Starting pre-processing...")
-
+    print(node_type_to_index)
     processed_files, failed_files = preprocess_and_save_dataset_parallel(
         dataframe=df,
         save_dir=PROCESSED_DATA_DIR,
@@ -399,13 +453,3 @@ if __name__ == '__main__':
         num_workers=14,
         number_of_files=None,
     )
-
-    # Check what we created
-    print(f"\nChecking processed files:")
-    for i, pf in enumerate(processed_files[:3]):  # Show first 3
-        print(f"File {i}: {pf['processed_path']} (label: {pf['label']})")
-
-        # Load one to verify
-        loaded_data = torch.load(pf['processed_path'], weights_only=False)
-        print(
-            f"  - Nodes: {loaded_data.x.shape[0]}, Edges: {loaded_data.edge_index.shape[1]}")

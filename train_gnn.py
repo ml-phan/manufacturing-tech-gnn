@@ -1,64 +1,118 @@
-import pandas as pd
-import networkx as nx
-import torch
-from torch_geometric.data import Data
+from src.gnn_models import *
+import datetime
 
-def simple_convert_graph(networkx_graph, label):
-    """
-    Convert a NetworkX graph to PyTorch Geometric Data object
-    This is a simple version - we'll improve it later
-    """
 
-    # Step 3a: Create a mapping from node names to numbers
-    # PyTorch Geometric needs nodes to be numbered 0, 1, 2, ...
-    nodes = list(networkx_graph.nodes())
-    node_to_index = {node: i for i, node in enumerate(nodes)}
+def training_pipeline():
+    PROCESSED_DATA_DIR = r"E:\gnn_data\pyg_data_v2_scaled"
 
-    print(f"Graph has {len(nodes)} nodes")
+    dataset = PyGInMemoryDataset(
+        root=PROCESSED_DATA_DIR,
+        pattern="*.pt",
+        transform=None,
+        pre_transform=None,
+        pre_filter=None
+    )
 
-    # Step 3b: Create simple node features
-    # For now, let's just use the node degree (how many connections each node has)
-    node_features = []
-    for node in nodes:
-        degree = networkx_graph.degree(node)  # Number of connections
-        # For now, our feature is just [degree]. Later we'll add more features.
-        node_features.append([float(degree)])
+    model = GINECombined_v2(
+        input_features=dataset[0].x.shape[1],
+        global_feature_dim=dataset[0].global_features.shape[1],
+        edge_features=dataset[0].edge_attr.shape[1],
+        hidden_sizes=[512, 256],
+        conv_dropout_rate=0.1,
+        classifier_dropout_rate=0.1,
+        use_layer_norm=True,
+        pool_hidden_size=256
+    )
 
-    # Convert to PyTorch tensor
-    x = torch.tensor(node_features, dtype=torch.float)
-    print(f"Node features shape: {x.shape}")
-
-    # Step 3c: Create edge list
-    edge_list = []
-    for edge in networkx_graph.edges():
-        source, target = edge
-        # Convert node names to indices
-        source_idx = node_to_index[source]
-        target_idx = node_to_index[target]
-
-        # Add both directions (undirected graph)
-        edge_list.append([source_idx, target_idx])
-        edge_list.append([target_idx, source_idx])
-
-    # Convert to PyTorch tensor and transpose
-    if edge_list:
-        edge_index = torch.tensor(edge_list, dtype=torch.long).t()
+    torch.cuda.empty_cache()
+    model_name = model.__class__.__name__
+    model_save_path = f"{model_name}.pth"
+    tracker_save_path = f"{model_name}_metrics_tracker.pkl"
+    if Path(model_save_path).exists():
+        print(f"Loading model from {model_save_path}")
+        model.load_state_dict(torch.load(model_save_path))
     else:
-        edge_index = torch.empty((2, 0), dtype=torch.long)
+        print(
+            f"Model file {model_save_path} does not exist. Initializing a new model.")
+    # Load metrics tracker if it exists
+    tracker = None
+    if Path(tracker_save_path).exists():
+        with open(tracker_save_path, "rb") as f:
+            tracker = joblib.load(f)
+    else:
+        print(
+            f"Metrics tracker file {tracker_save_path} does not exist. Initializing a new tracker.")
+    trained_model, new_tracker = simple_train_model_v4(
+        PROCESSED_DATA_DIR,
+        validation_fold=0,
+        model_params=None,
+        gnn_model=model,
+        num_epochs=100,
+        batch_size=128,
+        learning_rate=0.001,
+        optimizer_scheduler="OneCycleLR",
+        start_index=0,
+        num_graphs_to_use=63000,
+        metrics_tracker=tracker,
+        random_state=100,
+    )
+    # save model and metrics tracker
+    torch.save(trained_model.state_dict(), model_save_path)
+    with open(tracker_save_path, "wb") as f:
+        joblib.dump(new_tracker, f)
 
-    print(f"Edge index shape: {edge_index.shape}")
 
-    # Step 3d: Create label tensor
-    y = torch.tensor([label], dtype=torch.long)
+def train_gcn_simple_v1(num_epochs=50):
+    PROCESSED_DATA_DIR = r"E:\gnn_data\pyg_data_v1_simple"
+    dataset = FastSTEPDataset(PROCESSED_DATA_DIR, start_index=0)
+    model_state_save_path = "gcn_v1_simple_model_state.pth"
+    model_save_path = "gcn_v1_simple_model.pkl"
+    # Load model if exists
+    if Path(model_save_path).exists():
+        with open(model_save_path, "rb") as f:
+            model = joblib.load(f)
+    else:
+        model = GCN_v1_Simple(
+            input_features=dataset[0].x.shape[1],
+            embedding_dim=16,
+            hidden_sizes=[512],
+            conv_dropout_rate=0.1,
+            classifier_dropout_rate=0.1,
+            use_layer_norm=True,
+            pool_hidden_size=128
+        )
+    trained_model, history = simple_train_model_v1(
+        dataset_dir=PROCESSED_DATA_DIR,
+        validation_fold=None,
+        gnn_model=model,
+        num_epochs=num_epochs,
+        batch_size=4,
+        learning_rate=0.001,
+        optimizer_scheduler="OneCycleLR",
+        start_index=0,
+        num_graphs_to_use=63000,
+    )
+    torch.save(trained_model.state_dict(), model_state_save_path)
+    with open(model_save_path, "wb") as f:
+        joblib.dump(trained_model, f)
 
-    # Step 3e: Create PyTorch Geometric Data object
-    data = Data(x=x, edge_index=edge_index, y=y)
 
-    return data
-
-test_data = simple_convert_graph(G, first_label)
-print(f"\nPyTorch Geometric Data object:")
-print(f"- Node features (x): {test_data.x.shape}")
-print(f"- Edge index: {test_data.edge_index.shape}")
-print(f"- Label (y): {test_data.y}")
-print(f"- Number of edges: {test_data.edge_index.shape[1]}")
+if __name__ == '__main__':
+    dataset_path = Path(r"E:\gnn_data\pyg_data_v2_scaled_validation_fold_00")
+    validation_fold = 0
+    results_dir = Path(r"gnn_optuna_database")
+    results_dir.mkdir(exist_ok=True)
+    db_path = results_dir / f"optuna_gatv2_fold_{validation_fold}.db"
+    fold_results, database_path = optuna_gnn(
+        dataset_path, validation_fold=validation_fold,
+        n_trials=5, db_path=db_path
+    )
+    now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    with open(f"optuna_gatv2_results_{now}.pkl", "wb") as f:
+        joblib.dump(fold_results, f)
+    # study_name = "optuna_gine_fold_0"
+    # storage = "sqlite:///gnn_optuna_database/optuna_gine_fold_0.db"
+    #
+    # study = optuna.load_study(study_name=study_name, storage=storage)
+    # run_with_best_params(study)
+    # train_gcn_simple_v1(50)

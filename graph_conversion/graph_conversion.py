@@ -24,8 +24,8 @@ def process_single_file(step_file_path, graphml_dir):
 
 
 if __name__ == '__main__':
-    step_file_dir = r"E:\gnn_data\step_files"
-    graphml_dir = r"E:\gnn_data\graphml_files"
+    step_file_dir = r"E:\gnn_data\square_pocket"
+    graphml_dir = r"E:\gnn_data\square_pocket"
 
     all_files = list(Path(step_file_dir).glob("*.*"))
     failed_files = Path("failed_conversion.txt")

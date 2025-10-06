@@ -131,7 +131,7 @@ def visualize_pointcloud_open3d(filepath):
     if normals is not None:
         pcd.normals = o3d.utility.Vector3dVector(normals)
 
-    # # Optional: Color points based on normals or coordinates
+    # Optional: Color points based on normals or coordinates
     # if normals is not None:
     #     # Color based on normal directions
     #     colors = np.abs(normals)  # Use absolute values for RGB
@@ -148,12 +148,47 @@ def visualize_pointcloud_open3d(filepath):
     o3d.visualization.draw_geometries([pcd],
                                       window_name="Point Cloud Visualization",
                                       width=800, height=600,
+                                      point_show_normal=True,
                                       left=50, top=50)
 
+def visualize_pointcloud_with_normals(filepath):
+    """
+    Visualize point cloud with normals as lines.
+    Assumes format: x y z nx ny nz
+    """
+    # Load data
+    data = np.loadtxt(filepath, delimiter=",")
+    points = data[:, :3]
+    normals = data[:, 3:6]
+
+    # Create point cloud
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points)
+    pcd.normals = o3d.utility.Vector3dVector(normals)
+
+    # Add color for visualization (optional)
+    pcd.paint_uniform_color([0.7, 0.7, 0.7])  # light gray
+
+    # Visualize with normals
+    o3d.visualization.draw_geometries(
+        [pcd],
+        point_show_normal=True,  # <<=== show normals as lines
+        window_name="Point Cloud with Normals",
+        width=900, height=700
+    )
+
+# Example
+# visualize_pointcloud_with_normals("example_pointcloud.txt")
+
+
 if __name__ == '__main__':
-    step_dir = r"E:\gnn_data\step_files"
-    stl_dir = r"E:\gnn_data\stl_files"
-    pointcloud_dir = r"E:\gnn_data\pointcloud_files"
-    make_pointnet_dataset(step_dir, stl_dir, pointcloud_dir, num_points=2048)
-    stl_file = r"E:\gnn_data\pointcloud_files\square_pocket.txt"
+    # step_dir = r"E:\gnn_data\step_files_square"
+    # Path(step_dir).mkdir(parents=True, exist_ok=True)
+    # stl_dir = r"E:\gnn_data\stl_files_square"
+    # Path(stl_dir).mkdir(parents=True, exist_ok=True)
+    # pointcloud_dir = r"E:\gnn_data\pointcloud_files_square"
+    # Path(pointcloud_dir).mkdir(parents=True, exist_ok=True)
+    # make_pointnet_dataset(step_dir, stl_dir, pointcloud_dir, num_points=2048)
+    stl_file = r"E:\gnn_data\pointcloud_files_square\square_pocket.txt"
     visualize_pointcloud_open3d(stl_file)
+    # visualize_pointcloud_with_normals(stl_file)

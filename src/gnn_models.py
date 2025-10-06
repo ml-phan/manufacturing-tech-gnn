@@ -25,7 +25,7 @@ from sklearn.utils import compute_class_weight
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import GCNConv, GATConv, GINConv, GlobalAttention, \
-    GINEConv
+    GINEConv, GATv2Conv
 from torch_geometric.nn.aggr import AttentionalAggregation
 from torch.utils.data import Subset
 from torchmetrics import Accuracy, F1Score, AUROC, \
@@ -298,14 +298,15 @@ class GraphCustomTransform:
         return data
 
 
-class DynamicGNN(nn.Module):
+class GCN_v1_Simple(nn.Module):
     """
-    Dynamic Graph Neural Network for binary classification with configurable hidden layers
+    GCN that takes only node type as input, global features are optional
     """
 
-    def __init__(self, input_features, hidden_sizes=None,
-                 conv_dropout_rate=0.3, classifier_dropout_rate=0.4,
-                 use_layer_norm=True, pool_hidden_size=128):
+    def __init__(self, input_features, embedding_dim=16,
+                 hidden_sizes=None, conv_dropout_rate=0.1,
+                 classifier_dropout_rate=0.1, use_layer_norm=True,
+                 pool_hidden_size=128):
         """
         Args:
             input_features: Number of input node features
@@ -316,7 +317,7 @@ class DynamicGNN(nn.Module):
             use_layer_norm: Whether to use layer normalization
             pool_hidden_size: Hidden size for the attention pooling gate network
         """
-        super(DynamicGNN, self).__init__()
+        super(GCN_v1_Simple, self).__init__()
 
         if hidden_sizes is None:
             hidden_sizes = [256, 256]
@@ -325,7 +326,9 @@ class DynamicGNN(nn.Module):
 
         self.num_layers = len(hidden_sizes)
         self.hidden_sizes = hidden_sizes
+        self.embedding = nn.Embedding(400, embedding_dim)
         self.use_layer_norm = use_layer_norm
+        self.total_input_features = (input_features - 1) + embedding_dim
 
         # Create convolution layers dynamically
         self.convs = nn.ModuleList()
@@ -333,7 +336,7 @@ class DynamicGNN(nn.Module):
         self.layer_norms = nn.ModuleList() if use_layer_norm else None
 
         # First layer: input_features -> hidden_sizes[0]
-        self.convs.append(GCNConv(input_features, hidden_sizes[0]))
+        self.convs.append(GCNConv(self.total_input_features, hidden_sizes[0]))
         self.dropouts.append(nn.Dropout(p=conv_dropout_rate))
         if use_layer_norm:
             self.layer_norms.append(nn.LayerNorm(hidden_sizes[0]))
@@ -345,14 +348,14 @@ class DynamicGNN(nn.Module):
             if use_layer_norm:
                 self.layer_norms.append(nn.LayerNorm(hidden_sizes[i]))
 
-        # Global attention pooling
-        self.pool = GlobalAttention(gate_nn=nn.Sequential(
+        # Global attention pooling:
+        self.pool = AttentionalAggregation(gate_nn=nn.Sequential(
             nn.Linear(hidden_sizes[-1], pool_hidden_size),
             nn.ReLU(),
             nn.Linear(pool_hidden_size, 1)
         ))
 
-        # Classifier
+        # Classifier: Concatenates node features with global features
         self.classifier = nn.Sequential(
             nn.Linear(hidden_sizes[-1], pool_hidden_size),
             nn.ReLU(),
@@ -368,6 +371,7 @@ class DynamicGNN(nn.Module):
         """Print model configuration"""
         print(f"Created Dynamic GNN model:")
         print(f"- Input features: {input_features}")
+        print(f"- Embedding dimension: {self.embedding.embedding_dim}")
         print(f"- Number of hidden layers: {self.num_layers}")
         print(f"- Hidden layer sizes: {self.hidden_sizes}")
         print(f"- Output classes: 2")
@@ -375,13 +379,16 @@ class DynamicGNN(nn.Module):
         print(f"- Classifier dropout rate: {classifier_dropout_rate}")
         print(f"- Layer normalization: {self.use_layer_norm}")
 
-    def forward(self, x, edge_index, batch):
+    def forward(self, x, edge_index, batch, global_features=None):
         """
         Forward pass through the network
         x: node features
         edge_index: graph edges
         batch: which graph each node belongs to (for batching multiple graphs)
         """
+
+        # Get embeddings for node types
+        x = self.embedding(x.long()).squeeze()
 
         # Pass through all convolution layers
         for i, (conv, dropout) in enumerate(zip(self.convs, self.dropouts)):
@@ -395,12 +402,12 @@ class DynamicGNN(nn.Module):
             x = dropout(x)
 
         # Pool node features to get one vector per graph
-        x = self.pool(x, batch)
+        pooled_x = self.pool(x, batch)
 
         # Final classification
-        x = self.classifier(x)
+        output = self.classifier(pooled_x)
 
-        return x
+        return output
 
 
 class DynamicGNN_Embedding_GlobalFeatures(nn.Module):
@@ -484,7 +491,7 @@ class DynamicGNN_Embedding_GlobalFeatures(nn.Module):
         print(f"- Classifier dropout rate: {classifier_dropout_rate}")
         print(f"- Layer normalization: {self.use_layer_norm}")
 
-    def forward(self, x, edge_index, batch, global_features):
+    def forward(self, x, edge_index, batch, global_features=None):
         """
         Forward pass through the network
         x: node features
@@ -522,12 +529,12 @@ class DynamicGNN_Embedding_GlobalFeatures(nn.Module):
         return output
 
 
-class GATConvCombined(nn.Module):
+class GatConv2(nn.Module):
     """
     Dynamic Graph Neural Network for binary classification with configurable hidden layers
     """
 
-    def __init__(self, input_features, hidden_sizes=None, heads=4,
+    def __init__(self, input_features, hidden_sizes=None, num_heads=4,
                  conv_dropout_rate=0.2, classifier_dropout_rate=0.2,
                  use_layer_norm=True, pool_hidden_size=128):
         """
@@ -540,7 +547,7 @@ class GATConvCombined(nn.Module):
             use_layer_norm: Whether to use layer normalization
             pool_hidden_size: Hidden size for the attention pooling gate network
         """
-        super(GATConvCombined, self).__init__()
+        super(GatConv2, self).__init__()
 
         if hidden_sizes is None:
             hidden_sizes = [256, 256]
@@ -550,7 +557,7 @@ class GATConvCombined(nn.Module):
         self.num_layers = len(hidden_sizes)
         self.hidden_sizes = hidden_sizes
         self.use_layer_norm = use_layer_norm
-        self.heads = heads
+        self.num_heads = num_heads
         # Create convolution layers dynamically
         self.convs = nn.ModuleList()
         self.dropouts = nn.ModuleList()
@@ -561,35 +568,35 @@ class GATConvCombined(nn.Module):
             GATConv(
                 input_features,
                 hidden_sizes[0],
-                heads=self.heads,
+                heads=self.num_heads,
                 dropout=conv_dropout_rate
             ))
         if use_layer_norm:
-            self.layer_norms.append(nn.LayerNorm(hidden_sizes[0] * self.heads))
+            self.layer_norms.append(nn.LayerNorm(hidden_sizes[0] * self.num_heads))
 
         # Additional layers: hidden_sizes[i-1] -> hidden_sizes[i]
         for i in range(1, self.num_layers):
             self.convs.append(
                 GATConv(
-                    hidden_sizes[i - 1] * self.heads,
+                    hidden_sizes[i - 1] * self.num_heads,
                     hidden_sizes[i],
-                    heads=self.heads,
+                    heads=self.num_heads,
                     dropout=conv_dropout_rate
                 ))
             if use_layer_norm:
                 self.layer_norms.append(
-                    nn.LayerNorm(hidden_sizes[i] * self.heads))
+                    nn.LayerNorm(hidden_sizes[i] * self.num_heads))
 
         # Global attention pooling
         self.pool = GlobalAttention(gate_nn=nn.Sequential(
-            nn.Linear(hidden_sizes[-1] * self.heads, pool_hidden_size),
+            nn.Linear(hidden_sizes[-1] * self.num_heads, pool_hidden_size),
             nn.ReLU(),
             nn.Linear(pool_hidden_size, 1)
         ))
 
         # Classifier
         self.classifier = nn.Sequential(
-            nn.Linear(hidden_sizes[-1] * self.heads, pool_hidden_size),
+            nn.Linear(hidden_sizes[-1] * self.num_heads, pool_hidden_size),
             nn.ReLU(),
             nn.Dropout(p=classifier_dropout_rate),
             nn.Linear(pool_hidden_size, 2)
@@ -605,7 +612,7 @@ class GATConvCombined(nn.Module):
         print(f"- Input features: {input_features}")
         print(f"- Number of hidden layers: {self.num_layers}")
         print(f"- Hidden layer sizes: {self.hidden_sizes}")
-        print(f"- Attention heads: {self.heads}")
+        print(f"- Attention heads: {self.num_heads}")
         print(f"- Output classes: 2")
         print(f"- Convolution dropout rate: {conv_dropout_rate}")
         print(f"- Classifier dropout rate: {classifier_dropout_rate}")
@@ -772,26 +779,13 @@ class GINCombined(nn.Module):
         return output
 
 
-class GINCombinedv2(nn.Module):
-    """
-    Dynamic Graph Neural Network for binary classification with configurable hidden layers
-    """
-
-    def __init__(self, input_features, global_feature_dim,
+class GATCombined_v2(nn.Module):
+    def __init__(self, input_features, edge_features, global_feature_dim,
                  hidden_sizes=None, conv_dropout_rate=0.2,
-                 classifier_dropout_rate=0.2, use_layer_norm=True,
-                 pool_hidden_size=128):
-        """
-        Args:
-            input_features: Number of input node features
-            hidden_sizes: List of hidden layer sizes. Length determines number of hidden layers.
-                         e.g., [256, 128, 64] creates 3 hidden layers with these sizes
-            conv_dropout_rate: Dropout rate for convolution layers
-            classifier_dropout_rate: Dropout rate for classifier
-            use_layer_norm: Whether to use layer normalization
-            pool_hidden_size: Hidden size for the attention pooling gate network
-        """
-        super(GINCombinedv2, self).__init__()
+                 classifier_dropout_rate=0.2,
+                 use_layer_norm=True, pool_hidden_size=128,
+                 num_heads=4):
+        super(GATCombined_v2, self).__init__()
 
         if hidden_sizes is None:
             hidden_sizes = [256, 256]
@@ -801,85 +795,103 @@ class GINCombinedv2(nn.Module):
         self.num_layers = len(hidden_sizes)
         self.hidden_sizes = hidden_sizes
         self.use_layer_norm = use_layer_norm
-        self.input_features = input_features
-        self.conv_dropout_rate = conv_dropout_rate
-        self.classifier_dropout_rate = classifier_dropout_rate
+        self.edge_features = edge_features
+        self.num_heads = num_heads
+
         # Create convolution layers dynamically
         self.convs = nn.ModuleList()
         self.dropouts = nn.ModuleList()
         self.layer_norms = nn.ModuleList() if use_layer_norm else None
 
         # First layer: input_features -> hidden_sizes[0]
-        mlp = nn.Sequential(
-            nn.Linear(input_features, hidden_sizes[0]),
-            nn.ReLU(),
-            nn.Linear(hidden_sizes[0], hidden_sizes[0])
+        self.convs.append(
+            GATv2Conv(
+                in_channels=input_features,
+                out_channels=hidden_sizes[0],
+                heads=num_heads,
+                dropout=conv_dropout_rate,
+                edge_dim=edge_features,
+            )
         )
-        self.convs.append(GINConv(mlp))
         self.dropouts.append(nn.Dropout(p=conv_dropout_rate))
         if use_layer_norm:
-            self.layer_norms.append(nn.LayerNorm(hidden_sizes[0]))
+            self.layer_norms.append(nn.LayerNorm(hidden_sizes[0] * self.num_heads))
 
         # Additional layers: hidden_sizes[i-1] -> hidden_sizes[i]
         for i in range(1, self.num_layers):
-            mlp = nn.Sequential(
-                nn.Linear(hidden_sizes[i - 1], hidden_sizes[i]),
-                nn.ReLU(),
-                nn.Linear(hidden_sizes[i], hidden_sizes[i])
+
+            self.convs.append(
+                GATv2Conv(
+                    in_channels=hidden_sizes[i - 1] * self.num_heads,
+                    out_channels=hidden_sizes[i],
+                    heads=self.num_heads,
+                    edge_dim=edge_features,
+                )
             )
-            self.convs.append(GINConv(mlp))
             self.dropouts.append(nn.Dropout(p=conv_dropout_rate))
             if use_layer_norm:
-                self.layer_norms.append(nn.LayerNorm(hidden_sizes[i]))
+                self.layer_norms.append(
+                    nn.LayerNorm(hidden_sizes[i] * self.num_heads))
 
         # Global attention pooling
         self.pool = AttentionalAggregation(gate_nn=nn.Sequential(
-            nn.Linear(hidden_sizes[-1], pool_hidden_size),
-            nn.ReLU(),
+            nn.Linear(hidden_sizes[-1] * self.num_heads, pool_hidden_size),
+            nn.GELU(),
             nn.Linear(pool_hidden_size, 1)
         ))
 
         # Classifier
         self.classifier = nn.Sequential(
-            nn.Linear(hidden_sizes[-1] + global_feature_dim, pool_hidden_size),
-            nn.ReLU(),
+            nn.LayerNorm(hidden_sizes[-1] * self.num_heads + global_feature_dim),
+            nn.Linear(hidden_sizes[-1] * self.num_heads + global_feature_dim, 512),
+            nn.GELU(),
+            nn.Dropout(p=classifier_dropout_rate),
+            nn.Linear(512, pool_hidden_size),
+            nn.GELU(),
             nn.Dropout(p=classifier_dropout_rate),
             nn.Linear(pool_hidden_size, 2)
         )
 
-        self._print_model_info(input_features, conv_dropout_rate,
-                               classifier_dropout_rate)
+        self._print_model_info(
+            input_features, edge_features, conv_dropout_rate,
+            classifier_dropout_rate, pool_hidden_size
+        )
 
-    def _print_model_info(self, input_features, conv_dropout_rate,
-                          classifier_dropout_rate):
+    def _print_model_info(self, input_features, edge_features,
+                          conv_dropout_rate, classifier_dropout_rate,
+                          pool_hidden_size):
         """Print model configuration"""
-        print(f"Created Dynamic GIN model:")
+        print(f"Created GAT model:")
         print(f"- Input features: {input_features}")
+        print(f"- Input edge features: {edge_features}")
         print(f"- Number of hidden layers: {self.num_layers}")
         print(f"- Hidden layer sizes: {self.hidden_sizes}")
+        print(f"- Number of attention heads: {self.num_heads}")
         print(f"- Output classes: 2")
         print(f"- Convolution dropout rate: {conv_dropout_rate}")
         print(f"- Classifier dropout rate: {classifier_dropout_rate}")
+        print(f"- Pooling hidden layer size: {pool_hidden_size}")
         print(f"- Layer normalization: {self.use_layer_norm}")
 
     def forward(self, x, edge_index, edge_attr, batch, global_features):
-
         """
         Forward pass through the network
-        x: node features
-        edge_index: graph edges
-        batch: which graph each node belongs to (for batching multiple graphs)
+        Args:
+            x: node features [num_nodes, input_features]
+            edge_index: graph edges [2, num_edges]
+            edge_attr: edge features [num_edges, edge_features]
+            batch: which graph each node belongs to (for batching multiple graphs)
+            global_features: global features for each graph
         """
-
-        # Pass through all convolution layers
+        # Pass through all GAT convolution layers
         for i, (conv, dropout) in enumerate(zip(self.convs, self.dropouts)):
-            x = conv(x, edge_index)
+            x = conv(x, edge_index, edge_attr)
 
             # Apply layer normalization if enabled
             if self.use_layer_norm:
                 x = self.layer_norms[i](x)
 
-            x = F.relu(x)
+            x = F.gelu(x)
             x = dropout(x)
 
         # Pool node features to get one vector per graph
@@ -887,6 +899,7 @@ class GINCombinedv2(nn.Module):
 
         # Concatenate classifier input with global features
         combined_features = torch.cat((pooled_x, global_features), dim=1)
+
         # Final classification
         output = self.classifier(combined_features)
 
@@ -1163,208 +1176,7 @@ def dataset_scaling(dataset_dir, validation_fold):
     return train_folds, val_dataset, transform
 
 
-def simple_train_model_v2(
-        dataset,
-        gnn_model,
-        num_epochs=10,
-        batch_size=2,
-        learning_rate=0.001,
-        start_index=None,
-        num_graphs_to_use=None,
-):
-    """
-    Simple training function with progress tracking
-    """
-    num_graphs_to_use = min(num_graphs_to_use, len(dataset) - start_index)
-    # Split dataset into train/validation
-    training_start = time.perf_counter()
-    all_labels = dataset.get_labels()
-    labels = all_labels[start_index:start_index + num_graphs_to_use]
-    indices = list(range(start_index, start_index + num_graphs_to_use))
-    label_counts = Counter(labels)
-    for label, count in label_counts.items():
-        print(f"Label {label}: {count} instances")
-    total_count = sum(label_counts.values())
-    for label, count in label_counts.items():
-        percentage = (count / total_count) * 100
-        print(f"Label {label}: {percentage:.2f}% of total instances")
-    # Calculating class weights
-    class_weights = [len(labels) / count for label, count in
-                     label_counts.items()]
-    class_weights.reverse()
-    class_weights = torch.tensor(class_weights,
-                                 dtype=torch.float).to(device)
-    print(f"Class weights: {class_weights}")
-
-    print("Splitting dataset into train and validation sets")
-    train_indices, val_indices = train_test_split(
-        indices,
-        test_size=0.2,
-        stratify=labels,
-        random_state=42
-    )
-
-    print(f"Train samples: {len(train_indices)}")
-    print(f"Validation samples: {len(val_indices)}")
-
-    # Create train and validation using Subset
-    train_dataset = Subset(dataset, train_indices)
-    val_dataset = Subset(dataset, val_indices)
-
-    # Create data loaders
-    train_loader = DataLoader(train_dataset, batch_size=batch_size,
-                              shuffle=True, num_workers=8)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size,
-                            shuffle=False, num_workers=8)
-
-    # Create model
-    model = gnn_model.to(device)
-
-    # Loss function and optimizer
-    criterion = nn.CrossEntropyLoss(weight=class_weights)
-    optimizer = torch.optim.Adam(
-        model.parameters(),
-        lr=learning_rate,
-        # weight_decay=1e-5
-    )
-
-    print(f"\nStarting training for {num_epochs} epochs...")
-
-    # Progress tracking
-    training_history = {
-        'train_loss': [],
-        'train_acc': [],
-        'val_loss': [],
-        'val_acc': [],
-        'epoch': []
-    }
-
-    best_val_acc = 0.0
-    best_model_state = None
-
-    # Training loop
-    for epoch in range(num_epochs):
-        # print("Training epoch:", epoch + 1)
-        # Training phase
-        model.train()
-        total_loss = 0
-        correct_train = 0
-        total_train = 0
-
-        # Progress bar for training batches
-        train_pbar = tqdm(train_loader,
-                          desc=f'Epoch {epoch + 1}/{num_epochs} [Train]')
-
-        for batch in train_pbar:
-            # Zero gradients
-            optimizer.zero_grad()
-
-            # Forward pass
-            batch = batch.to(device)
-            # print(f"x shape: {batch.x.shape}")
-            # print(f"edge_index shape: {batch.edge_index.shape}")
-            # print(f"batch shape: {batch.batch.shape}")
-            # print(f"global_features shape: {batch.global_features.shape}")
-            outputs = model(
-                batch.x, batch.edge_index,
-                batch.batch, batch.global_features
-            )
-            loss = criterion(outputs.squeeze(), batch.y.squeeze())
-            # Dimension check for outputs batch
-
-            # Backward pass
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 10)
-            optimizer.step()
-
-            # Statistics
-            total_loss += loss.item()
-            _, predicted = torch.max(outputs.data, 1)
-
-            total_train += batch.y.size(0)
-            correct_train += (predicted == batch.y).sum().item()
-
-            # Update progress bar
-            current_acc = 100 * correct_train / total_train
-            train_pbar.set_postfix({
-                'loss': f'{loss.item():.4f}',
-                'acc': f'{current_acc:.2f}%'
-            })
-
-        # Validation phase
-        model.eval()
-        correct_val = 0
-        total_val = 0
-        val_loss = 0
-
-        with torch.no_grad():
-            val_pbar = tqdm(val_loader,
-                            desc=f'Epoch {epoch + 1}/{num_epochs} [Val]')
-
-            for batch in val_pbar:
-                batch = batch.to(device)
-                outputs = model(
-                    batch.x, batch.edge_index,
-                    batch.batch, batch.global_features
-                )
-                loss = criterion(outputs, batch.y)
-
-                val_loss += loss.item()
-                _, predicted = torch.max(outputs.data, 1)
-                total_val += batch.y.size(0)
-                correct_val += (predicted == batch.y).sum().item()
-
-                # Update progress bar
-                current_val_acc = 100 * correct_val / total_val
-                val_pbar.set_postfix({
-                    'loss': f'{loss.item():.4f}',
-                    'acc': f'{current_val_acc:.2f}%'
-                })
-
-        # Calculate epoch statistics
-        train_acc = 100 * correct_train / total_train
-        val_acc = 100 * correct_val / total_val
-        avg_train_loss = total_loss / len(train_loader)
-        avg_val_loss = val_loss / len(val_loader)
-
-        # Store progress
-        training_history['epoch'].append(epoch + 1)
-        training_history['train_loss'].append(avg_train_loss)
-        training_history['train_acc'].append(train_acc)
-        training_history['val_loss'].append(avg_val_loss)
-        training_history['val_acc'].append(val_acc)
-
-        # Save best model
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            best_model_state = model.state_dict().copy()
-
-        # Print epoch summary
-        print(
-            f'Epoch {epoch + 1}/{num_epochs} - Train Loss: {avg_train_loss:.4f}'
-            f', Acc: {train_acc:.2f}% | Val Loss: {avg_val_loss:.4f}, '
-            f'Acc: {val_acc:.2f}% (Best Val: {best_val_acc:.2f}%)')
-        # print(f'Epoch {epoch + 1}/{num_epochs} Summary:')
-        # print(
-        #     f'  Train Loss: {avg_train_loss:.4f}, Train Acc: {train_acc:.2f}%')
-        # print(f'  Val Loss: {avg_val_loss:.4f}, Val Acc: {val_acc:.2f}%')
-        # print(f'  Best Val Acc: {best_val_acc:.2f}%')
-        # print('-' * 50)
-
-        # Clear CUDA cache to free memory incase of leaks
-        torch.cuda.empty_cache()
-
-    # Load best model
-    model.load_state_dict(best_model_state)
-    training_end = time.perf_counter()
-    print("Training completed!")
-    print(f"Training time: {training_end - training_start}")
-    print(f"Best validation accuracy: {best_val_acc:.2f}%")
-
-    return model, training_history
-
-
-def simple_train_model_v4(
+def simple_train_model_v1(
         dataset_dir,
         validation_fold,
         model_params=None,
@@ -1609,9 +1421,7 @@ def simple_train_model_v4(
             outputs = model(
                 x=batch.x,
                 edge_index=batch.edge_index,
-                edge_attr=batch.edge_attr,
                 batch=batch.batch,
-                global_features=batch.global_features
             )
             loss = criterion(outputs.squeeze(), batch.y.squeeze())
 
@@ -1656,9 +1466,7 @@ def simple_train_model_v4(
                 outputs = model(
                     x=batch.x,
                     edge_index=batch.edge_index,
-                    edge_attr=batch.edge_attr,
                     batch=batch.batch,
-                    global_features=batch.global_features
                 )
                 loss = criterion(outputs, batch.y)
 
@@ -1731,6 +1539,361 @@ def simple_train_model_v4(
     return model, metrics_tracker
 
 
+def simple_train_model_v4(
+        dataset_dir,
+        validation_fold,
+        model_params=None,
+        gnn_model=None,
+        num_epochs=10,
+        batch_size=2,
+        learning_rate=0.001,
+        optimizer_scheduler="ReduceLROnPlateau",
+        start_index=0,
+        num_graphs_to_use=None,
+        metrics_tracker=None,
+        random_state=None,
+        trial_progress=r"1/1",
+):
+    """
+    Simple training function with progress tracking
+    """
+    # Split dataset into train/validation
+    training_start = time.perf_counter()
+
+    if validation_fold is None:
+        dataset = PyGInMemoryDataset_v2(
+            root=str(dataset_dir))
+        all_labels = dataset.get_labels()
+        num_graphs_to_use = min(num_graphs_to_use, len(dataset) - start_index)
+        labels = all_labels[start_index:start_index + num_graphs_to_use]
+        indices = list(range(start_index, start_index + num_graphs_to_use))
+        label_counts = Counter(labels)
+        num_classes = len(label_counts)
+        total_count = sum(label_counts.values())
+        for label, count in label_counts.items():
+            percentage = (count / total_count) * 100
+            print(f"Label {label}: {count} instances ({percentage:.2f}%)")
+        # Calculating class weights
+        class_weights = compute_class_weight(
+            class_weight='balanced',
+            classes=np.unique(labels),
+            y=labels
+        )
+
+        # Convert to dictionary format
+        class_weights = torch.FloatTensor(
+            [class_weights[0], class_weights[1]]).to(device)
+
+        train_indices, val_indices = train_test_split(
+            indices,
+            test_size=0.2,
+            stratify=labels,
+            random_state=random_state,
+        )
+
+        print(f"Train samples: {len(train_indices)}")
+        print(f"Validation samples: {len(val_indices)}")
+        print(f"Random state: {random_state}")
+
+        # Create train and validation using Subset
+        train_dataset = Subset(dataset, train_indices)
+        val_dataset = Subset(dataset, val_indices)
+
+
+    else:
+        all_data_set_folds = []
+        for fold in tqdm(range(10), desc="Generating folds"):
+            dataset_path = Path(
+                dataset_dir) / f"fold_{str(fold).zfill(2)}"
+            if dataset_path.exists():
+                dataset = PyGInMemoryDataset_v2(
+                    root=str(dataset_path),
+                    transform=None,
+                )
+                all_data_set_folds.append(dataset)
+        train_folds = all_data_set_folds[
+                      :validation_fold] + all_data_set_folds[
+                                          validation_fold + 1:]
+        # train_folds, val_dataset, transform = dataset_scaling(
+        #     dataset_dir, validation_fold,
+        #     scalers=None
+        # )
+        train_dataset = ConcatDataset(train_folds)
+        # print(f"Using fold {validation_fold} for validation")
+        val_dataset = all_data_set_folds[validation_fold]
+        train_labels = [
+            inner_item
+            for item in train_folds
+            for inner_item in item.get_labels()]
+        val_labels = val_dataset.get_labels()
+        train_label_counts = Counter(train_labels)
+        val_label_counts = Counter(val_labels)
+        total_count = sum(train_label_counts.values())
+        for label, count in train_label_counts.items():
+            percentage = (count / total_count) * 100
+            print(f"Label {label}: {count} instances ({percentage:.2f}%)")
+        num_classes = len(train_label_counts)
+
+        class_weights = compute_class_weight(
+            class_weight='balanced',
+            classes=np.unique(train_labels),
+            y=train_labels
+        )
+
+        # Convert to dictionary format
+        class_weights = torch.FloatTensor(
+            [class_weights[0], class_weights[1]]).to(device)
+
+    print(f"Class weights: {class_weights}")
+    # Scale the dataset
+    # Create data loaders
+    train_loader = DataLoader(train_dataset, batch_size=batch_size,
+                              shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+
+    # Create model
+    if model_params:
+        # model = GINECombined_v2(
+        #     input_features=train_dataset[0].x.shape[1],
+        #     global_feature_dim=train_dataset[0].global_features.shape[1],
+        #     edge_features=train_dataset[0].edge_attr.shape[1],
+        #     **model_params
+        # ).to(device)
+        model = GATCombined_v2(
+            input_features=train_dataset[0].x.shape[1],
+            global_feature_dim=train_dataset[0].global_features.shape[1],
+            edge_features=train_dataset[0].edge_attr.shape[1],
+            **model_params
+        ).to(device)
+    elif gnn_model:
+        model = gnn_model.to(device)
+    else:
+        print("Either model_params or gnn_model must be provided")
+        return None, None
+    # Loss function and optimizer
+    # TODO: Focal Loss
+    criterion = nn.CrossEntropyLoss(weight=class_weights)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=learning_rate,
+        weight_decay=1e-5
+    )
+    print(f"Optimizer: {optimizer.__class__.__name__}", end=". ")
+    print(f"Learning rate: {learning_rate}", end=". ")
+    # Create MetricCollection for all metrics
+    # metrics = MetricCollection({
+    #     'accuracy': Accuracy(task="multiclass", num_classes=num_classes),
+    #     'f1': F1Score(task="multiclass", num_classes=num_classes,
+    #                   average="weighted"),
+    #     'precision': Precision(task="multiclass", num_classes=num_classes,
+    #                            average="weighted"),
+    #     'recall': Recall(task="multiclass", num_classes=num_classes,
+    #                      average="weighted"),
+    #     'auroc': AUROC(task="multiclass", num_classes=num_classes)
+    # }).to(device)
+    # train_metrics = metrics.clone(prefix='train_')
+    # val_metrics = metrics.clone(prefix='val_')
+
+    if metrics_tracker is None:
+        metrics_tracker = {
+            "train_tracker": MetricTracker(
+                MetricCollection(
+                    {
+                        "acc": Accuracy(
+                            task="multiclass", num_classes=num_classes),
+                        "f1": F1Score(
+                            task="multiclass",
+                            num_classes=num_classes,
+                            average="macro"),
+                        "avp": AveragePrecision(
+                            task="multiclass",
+                            num_classes=num_classes,
+                            average="macro"),
+                        "auroc": AUROC(
+                            task="multiclass", num_classes=num_classes)
+                    }
+                )).to(device),
+            "val_tracker": MetricTracker(
+                MetricCollection(
+                    {
+                        "acc": Accuracy(
+                            task="multiclass", num_classes=num_classes),
+                        "f1": F1Score(
+                            task="multiclass",
+                            num_classes=num_classes,
+                            average="macro"),
+                        "avp": AveragePrecision(
+                            task="multiclass",
+                            num_classes=num_classes,
+                            average="macro"),
+                        "auroc": AUROC(
+                            task="multiclass", num_classes=num_classes)
+                    }
+                )).to(device)}
+    else:
+        metrics_tracker["train_tracker"].to(device)
+        metrics_tracker["val_tracker"].to(device)
+
+    if optimizer_scheduler == "OneCycleLR":
+        # OneCycleLR scheduler
+        total_steps = num_epochs * len(train_loader)
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=learning_rate * 10,  # Peak learning rate (10x base rate)
+            total_steps=total_steps,  # Total number of batch steps
+            pct_start=0.3,  # 30% of training spent increasing LR
+        )
+    else:
+        # Defaults to ReduceLROnPlateau scheduler
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode='max',  # Maximize auroc
+            factor=0.7,
+            patience=10,
+            threshold=0.001,
+            min_lr=1e-6,
+        )
+
+    print(f"LR scheduler: {scheduler.__class__.__name__}")
+
+    loss_history = {"train_loss": [], "val_loss": []}
+
+    best_val_f1 = 0.0
+    best_auroc = 0.0
+    best_model_state = None
+
+    print(f"\nStarting training for {num_epochs} epochs...")
+
+    # Training loop
+    for epoch in range(num_epochs):
+
+        # Training phase
+        model.train()
+        total_train_loss = 0
+        metrics_tracker["train_tracker"].increment()
+        metrics_tracker["val_tracker"].increment()
+        # Progress bar for training batches
+        train_pbar = tqdm(train_loader,
+                          desc=f'Epoch {epoch + 1}/{num_epochs} Trial {trial_progress} [Train]')
+
+        # Train loop
+        for batch in train_pbar:
+            # Zero gradients
+            optimizer.zero_grad()
+
+            # Forward pass
+            batch = batch.to(device)
+            outputs = model(
+                x=batch.x,
+                edge_index=batch.edge_index,
+                edge_attr=batch.edge_attr,
+                batch=batch.batch,
+                global_features=batch.global_features
+            )
+            loss = criterion(outputs.squeeze(), batch.y.squeeze())
+
+            # Backward pass
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 10)
+            optimizer.step()
+
+            # Statistics
+            total_train_loss += loss.item()
+
+            # Update all metrics
+            metrics_tracker["train_tracker"].update(outputs, batch.y)
+
+            # Update progress bar
+            current_metrics2 = metrics_tracker["train_tracker"].compute()
+            train_pbar.set_postfix({
+                'loss': f'{loss.item():.4f}',
+                'acc2': f'{current_metrics2["acc"] * 100:.2f}%',
+                'f1_2': f'{current_metrics2["f1"]:.4f}',
+                'auroc2': f'{current_metrics2["auroc"]:.4f}',
+            })
+        # Compute final accuracy for the epoch and then reset
+        train_results = metrics_tracker["train_tracker"].compute()
+        avg_train_loss = total_train_loss / len(train_loader)
+
+        # Validation phase
+        model.eval()
+        total_val_loss = 0
+
+        with torch.no_grad():
+            val_pbar = tqdm(val_loader,
+                            desc=f'Epoch {epoch + 1}/{num_epochs} Trial {trial_progress} [Val]')
+
+            for batch in val_pbar:
+                batch = batch.to(device)
+                outputs = model(
+                    x=batch.x,
+                    edge_index=batch.edge_index,
+                    edge_attr=batch.edge_attr,
+                    batch=batch.batch,
+                    global_features=batch.global_features
+                )
+                loss = criterion(outputs, batch.y)
+
+                total_val_loss += loss.item()
+                metrics_tracker["val_tracker"].update(outputs, batch.y)
+
+                # Update progress bar
+                current_val_metrics2 = metrics_tracker["val_tracker"].compute()
+
+                val_pbar.set_postfix({
+                    'loss': f'{loss.item():.4f}',
+                    'acc2': f'{current_val_metrics2["acc"] * 100:.2f}%',
+                    'f1_2': f'{current_val_metrics2["f1"]:.4f}',
+                    'auroc2': f'{current_val_metrics2["auroc"]:.4f}',
+                })
+
+        # Compute final accuracy for the epoch and then reset
+        val_results = metrics_tracker["val_tracker"].compute()
+        avg_val_loss = total_val_loss / len(val_loader)
+
+        # Store loss history manually
+        loss_history['train_loss'].append(avg_train_loss)
+        loss_history['val_loss'].append(avg_val_loss)
+
+        # Update the scheduler with validation auroc
+        if optimizer_scheduler == "ReduceLROnPlateau":
+            scheduler.step(val_results['auroc'])
+        else:
+            scheduler.step()
+
+        # Save best model
+        if val_results["auroc"] > best_auroc:
+            best_auroc = val_results["auroc"]
+            best_model_state = model.state_dict().copy()
+
+        # Save best F1 score
+        if val_results["f1"] > best_val_f1:
+            best_val_f1 = val_results["f1"]
+
+        # Print epoch summary
+        print(
+            f"Epoch {epoch + 1}/{num_epochs} - "
+            f"Train Loss: {avg_train_loss:.4f}, Acc: {train_results['acc'].item():.2%} | "
+            f"Val Loss: {avg_val_loss:.4f}, Acc: {val_results['acc'].item():.2%} | "
+            f"Val F1: {val_results['f1']:.4f} (Best: {best_val_f1:.4f}) | "
+            f"Val AUC: {val_results['auroc']:.4f} (Best: {best_auroc:.4f})"
+        )
+
+        # Reset all metrics Clear CUDA cache to free memory in case of leaks
+        # No reset when using MetricTracker
+        # metrics_tracker["train_tracker"].reset()
+        # metrics_tracker["val_tracker"].reset()
+        torch.cuda.empty_cache()
+
+    # Load best model
+    model.load_state_dict(best_model_state)
+    training_end = time.perf_counter()
+    print(f"Training completed. Training time: {training_end - training_start:.2f}.", end=" ")
+    print(f"Best Val F1: {best_val_f1:.4f}. Best Val AUROC: {best_auroc:.4f}")
+
+    return model, metrics_tracker
+
+
 def optuna_gnn(dataset_path, validation_fold=0, n_trials=1, db_path=None):
     start_time = time.perf_counter()
     tracker_path = Path(r"E:\gnn_data\optuna_tracker_v2")
@@ -1746,10 +1909,10 @@ def optuna_gnn(dataset_path, validation_fold=0, n_trials=1, db_path=None):
     results_dir = Path(r"gnn_optuna_database")
     results_dir.mkdir(exist_ok=True)
     if db_path is None:
-        db_path = results_dir / f"optuna_gine_fold_{validation_fold}.db"
+        db_path = results_dir / f"optuna_gatv2_fold_{validation_fold}.db"
 
     study = optuna.create_study(
-        study_name=f"optuna_gine_fold_{validation_fold}",
+        study_name=f"optuna_gatv2_fold_{validation_fold}",
         storage=f"sqlite:///{db_path}",
         load_if_exists=True,
         direction="maximize",
@@ -1769,12 +1932,13 @@ def optuna_gnn(dataset_path, validation_fold=0, n_trials=1, db_path=None):
                     "classifier_dropout_rate", 0.01, 0.5),
                 "use_layer_norm": trial.suggest_categorical(
                     "use_layer_norm", [True, False]),
-                "pool_hidden_size": trial.suggest_int("pool_hidden_size", 128, 1024)
+                "pool_hidden_size": trial.suggest_int("pool_hidden_size", 128, 1024),
+                "num_heads" : trial.suggest_int("num_head", 2, 4),
             }
             print(model_params)
             train_function_params = {
                 "num_epochs": trial.suggest_int("num_epochs", 100, 300),
-                "batch_size": trial.suggest_int("batch_size", 32, 128),
+                "batch_size": trial.suggest_int("batch_size", 16, 32),
                 "learning_rate": trial.suggest_float(
                     "learning_rate", 1e-5, 1e-2, log=True),
                 "optimizer_scheduler": trial.suggest_categorical(
@@ -1782,7 +1946,7 @@ def optuna_gnn(dataset_path, validation_fold=0, n_trials=1, db_path=None):
             }
             print(train_function_params)
             total_trials = n_trials + existing_trials
-            trial_progress = rf"{trial.number}/{total_trials}"
+            trial_progress = rf"{trial.number + 1}/{total_trials}"
             trained_model, new_tracker = simple_train_model_v4(
                 dataset_dir=dataset_path,
                 validation_fold=validation_fold,
@@ -1802,7 +1966,7 @@ def optuna_gnn(dataset_path, validation_fold=0, n_trials=1, db_path=None):
             }
             # Append results to json file
             results_path = Path(
-                fr"optuna_gine_fold_{validation_fold}_results.json")
+                fr"optuna_gatv2_fold_{validation_fold}_results.json")
             if results_path.exists():
                 with open(results_path, 'r') as f:
                     all_results = json.load(f)

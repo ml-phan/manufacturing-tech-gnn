@@ -1,3 +1,0 @@
-failed_graphml_files.txt .unclosed token: line 6124, column 4
-failed_graphml_files.txt .no element found: line 1, column 0
-failed_graphml_files.txt .not well-formed (invalid token): line 680095, column 26

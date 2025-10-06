@@ -1,0 +1,1365 @@
+{
+    "trial_5": {
+        "model_params": {
+            "hidden_sizes": [
+                235,
+                235
+            ],
+            "conv_dropout_rate": 0.21801361946707523,
+            "classifier_dropout_rate": 0.4239403048367528,
+            "use_layer_norm": false,
+            "pool_hidden_size": 729,
+            "num_heads": 4
+        },
+        "train_function_params": {
+            "num_epochs": 127,
+            "batch_size": 25,
+            "learning_rate": 0.004720259369179813,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.7361736297607422,
+            "auroc": 0.7819603085517883,
+            "avp": 0.7504403591156006,
+            "f1": 0.7185138463973999
+        }
+    },
+    "trial_6": {
+        "model_params": {
+            "hidden_sizes": [
+                212
+            ],
+            "conv_dropout_rate": 0.4895256545066111,
+            "classifier_dropout_rate": 0.4077247430537684,
+            "use_layer_norm": false,
+            "pool_hidden_size": 373,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 288,
+            "batch_size": 29,
+            "learning_rate": 0.0001019379393912696,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.8688102960586548,
+            "auroc": 0.9408138990402222,
+            "avp": 0.9347655177116394,
+            "f1": 0.8601241707801819
+        }
+    },
+    "trial_7": {
+        "model_params": {
+            "hidden_sizes": [
+                225
+            ],
+            "conv_dropout_rate": 0.3998746291519108,
+            "classifier_dropout_rate": 0.017474935910706115,
+            "use_layer_norm": false,
+            "pool_hidden_size": 222,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 107,
+            "batch_size": 31,
+            "learning_rate": 0.008765214954875087,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.6446945071220398,
+            "auroc": 0.6693317890167236,
+            "avp": 0.6499422788619995,
+            "f1": 0.39198437333106995
+        }
+    },
+    "trial_8": {
+        "model_params": {
+            "hidden_sizes": [
+                413,
+                413
+            ],
+            "conv_dropout_rate": 0.3187901288729343,
+            "classifier_dropout_rate": 0.29510267427540116,
+            "use_layer_norm": false,
+            "pool_hidden_size": 616,
+            "num_heads": 4
+        },
+        "train_function_params": {
+            "num_epochs": 150,
+            "batch_size": 20,
+            "learning_rate": 0.0036073249328511152,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.7372990250587463,
+            "auroc": 0.7794317007064819,
+            "avp": 0.7441592812538147,
+            "f1": 0.7140265107154846
+        }
+    },
+    "trial_9": {
+        "model_params": {
+            "hidden_sizes": [
+                358,
+                358
+            ],
+            "conv_dropout_rate": 0.1838498497120769,
+            "classifier_dropout_rate": 0.17669320553161644,
+            "use_layer_norm": false,
+            "pool_hidden_size": 168,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 175,
+            "batch_size": 26,
+            "learning_rate": 0.000775935508817351,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.8832797408103943,
+            "auroc": 0.9457418322563171,
+            "avp": 0.9353460073471069,
+            "f1": 0.8747408390045166
+        }
+    },
+    "trial_10": {
+        "model_params": {
+            "hidden_sizes": [
+                235,
+                235
+            ],
+            "conv_dropout_rate": 0.21801361946707523,
+            "classifier_dropout_rate": 0.4239403048367528,
+            "use_layer_norm": false,
+            "pool_hidden_size": 729,
+            "num_heads": 4
+        },
+        "train_function_params": {
+            "num_epochs": 127,
+            "batch_size": 25,
+            "learning_rate": 0.004720259369179813,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.7512861490249634,
+            "auroc": 0.7940032482147217,
+            "avp": 0.7700024843215942,
+            "f1": 0.7292362451553345
+        }
+    },
+    "trial_11": {
+        "model_params": {
+            "hidden_sizes": [
+                212
+            ],
+            "conv_dropout_rate": 0.4895256545066111,
+            "classifier_dropout_rate": 0.4077247430537684,
+            "use_layer_norm": false,
+            "pool_hidden_size": 373,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 288,
+            "batch_size": 29,
+            "learning_rate": 0.0001019379393912696,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.8681672215461731,
+            "auroc": 0.9415319561958313,
+            "avp": 0.935250461101532,
+            "f1": 0.8589879274368286
+        }
+    },
+    "trial_12": {
+        "model_params": {
+            "hidden_sizes": [
+                509,
+                509,
+                509
+            ],
+            "conv_dropout_rate": 0.057120155169816944,
+            "classifier_dropout_rate": 0.1377096273045785,
+            "use_layer_norm": true,
+            "pool_hidden_size": 1017,
+            "num_heads": 2
+        },
+        "train_function_params": {
+            "num_epochs": 209,
+            "batch_size": 16,
+            "learning_rate": 0.000602369746828417,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.8454983830451965,
+            "auroc": 0.9167277216911316,
+            "avp": 0.9011631608009338,
+            "f1": 0.8358362317085266
+        }
+    },
+    "trial_13": {
+        "model_params": {
+            "hidden_sizes": [
+                331,
+                331,
+                331
+            ],
+            "conv_dropout_rate": 0.10245480301394455,
+            "classifier_dropout_rate": 0.24661226372338435,
+            "use_layer_norm": true,
+            "pool_hidden_size": 141,
+            "num_heads": 2
+        },
+        "train_function_params": {
+            "num_epochs": 208,
+            "batch_size": 28,
+            "learning_rate": 1.1133928971572156e-05,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.8752411603927612,
+            "auroc": 0.9365272521972656,
+            "avp": 0.9299358129501343,
+            "f1": 0.8662582635879517
+        }
+    },
+    "trial_14": {
+        "model_params": {
+            "hidden_sizes": [
+                140,
+                140,
+                140
+            ],
+            "conv_dropout_rate": 0.1293828240927375,
+            "classifier_dropout_rate": 0.2682713935643054,
+            "use_layer_norm": true,
+            "pool_hidden_size": 427,
+            "num_heads": 2
+        },
+        "train_function_params": {
+            "num_epochs": 250,
+            "batch_size": 28,
+            "learning_rate": 0.0005820724088308589,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.882958173751831,
+            "auroc": 0.9461551904678345,
+            "avp": 0.9369901418685913,
+            "f1": 0.875669538974762
+        }
+    },
+    "trial_15": {
+        "model_params": {
+            "hidden_sizes": [
+                142,
+                142,
+                142
+            ],
+            "conv_dropout_rate": 0.14012727955027166,
+            "classifier_dropout_rate": 0.21967541355708833,
+            "use_layer_norm": true,
+            "pool_hidden_size": 498,
+            "num_heads": 2
+        },
+        "train_function_params": {
+            "num_epochs": 248,
+            "batch_size": 22,
+            "learning_rate": 0.0008189116623911706,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.8802250623703003,
+            "auroc": 0.9420119524002075,
+            "avp": 0.9336613416671753,
+            "f1": 0.8722400665283203
+        }
+    },
+    "trial_16": {
+        "model_params": {
+            "hidden_sizes": [
+                347,
+                347,
+                347
+            ],
+            "conv_dropout_rate": 0.015205896305143712,
+            "classifier_dropout_rate": 0.13907162180819296,
+            "use_layer_norm": true,
+            "pool_hidden_size": 516,
+            "num_heads": 2
+        },
+        "train_function_params": {
+            "num_epochs": 172,
+            "batch_size": 26,
+            "learning_rate": 0.0011123227514359146,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.8823150992393494,
+            "auroc": 0.9440079927444458,
+            "avp": 0.9335945844650269,
+            "f1": 0.8743287920951843
+        }
+    },
+    "trial_17": {
+        "model_params": {
+            "hidden_sizes": [
+                392,
+                392
+            ],
+            "conv_dropout_rate": 0.14388181709171508,
+            "classifier_dropout_rate": 0.3172537711079291,
+            "use_layer_norm": true,
+            "pool_hidden_size": 291,
+            "num_heads": 2
+        },
+        "train_function_params": {
+            "num_epochs": 240,
+            "batch_size": 22,
+            "learning_rate": 0.00025154538966761983,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.8826366662979126,
+            "auroc": 0.9438494443893433,
+            "avp": 0.9357391595840454,
+            "f1": 0.8745632171630859
+        }
+    },
+    "trial_18": {
+        "model_params": {
+            "hidden_sizes": [
+                129,
+                129,
+                129
+            ],
+            "conv_dropout_rate": 0.1352805497955969,
+            "classifier_dropout_rate": 0.16324204010388244,
+            "use_layer_norm": true,
+            "pool_hidden_size": 129,
+            "num_heads": 2
+        },
+        "train_function_params": {
+            "num_epochs": 180,
+            "batch_size": 27,
+            "learning_rate": 0.0003249902474209127,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.8824759125709534,
+            "auroc": 0.9463907480239868,
+            "avp": 0.9363064765930176,
+            "f1": 0.8745113611221313
+        }
+    },
+    "trial_19": {
+        "model_params": {
+            "hidden_sizes": [
+                129,
+                129,
+                129
+            ],
+            "conv_dropout_rate": 0.2907998685728239,
+            "classifier_dropout_rate": 0.07434700918689487,
+            "use_layer_norm": true,
+            "pool_hidden_size": 1006,
+            "num_heads": 2
+        },
+        "train_function_params": {
+            "num_epochs": 240,
+            "batch_size": 28,
+            "learning_rate": 0.0002555145287063445,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.883922815322876,
+            "auroc": 0.9452226161956787,
+            "avp": 0.9367736577987671,
+            "f1": 0.8756757974624634
+        }
+    },
+    "trial_20": {
+        "model_params": {
+            "hidden_sizes": [
+                167,
+                167,
+                167
+            ],
+            "conv_dropout_rate": 0.09866117771956356,
+            "classifier_dropout_rate": 0.3321106511968882,
+            "use_layer_norm": true,
+            "pool_hidden_size": 899,
+            "num_heads": 2
+        },
+        "train_function_params": {
+            "num_epochs": 257,
+            "batch_size": 31,
+            "learning_rate": 3.6694375425551566e-05,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.874919593334198,
+            "auroc": 0.9376842975616455,
+            "avp": 0.9308578372001648,
+            "f1": 0.8661983013153076
+        }
+    },
+    "trial_21": {
+        "model_params": {
+            "hidden_sizes": [
+                287,
+                287,
+                287
+            ],
+            "conv_dropout_rate": 0.14530793326055072,
+            "classifier_dropout_rate": 0.49730772121256606,
+            "use_layer_norm": true,
+            "pool_hidden_size": 458,
+            "num_heads": 2
+        },
+        "train_function_params": {
+            "num_epochs": 218,
+            "batch_size": 23,
+            "learning_rate": 0.0016248395863951474,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.7734726667404175,
+            "auroc": 0.862917423248291,
+            "avp": 0.8439985513687134,
+            "f1": 0.7656700611114502
+        }
+    },
+    "trial_22": {
+        "model_params": {
+            "hidden_sizes": [
+                170,
+                170,
+                170
+            ],
+            "conv_dropout_rate": 0.02887913253795922,
+            "classifier_dropout_rate": 0.21313236915415662,
+            "use_layer_norm": true,
+            "pool_hidden_size": 307,
+            "num_heads": 2
+        },
+        "train_function_params": {
+            "num_epochs": 181,
+            "batch_size": 20,
+            "learning_rate": 0.001960369599252744,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.8614147901535034,
+            "auroc": 0.9295591711997986,
+            "avp": 0.9190897941589355,
+            "f1": 0.8518038392066956
+        }
+    },
+    "trial_23": {
+        "model_params": {
+            "hidden_sizes": [
+                405,
+                405
+            ],
+            "conv_dropout_rate": 0.16119833624923077,
+            "classifier_dropout_rate": 0.16471029978775406,
+            "use_layer_norm": true,
+            "pool_hidden_size": 156,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 186,
+            "batch_size": 28,
+            "learning_rate": 0.00047626085050956224,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.8850482106208801,
+            "auroc": 0.9421941637992859,
+            "avp": 0.9336566925048828,
+            "f1": 0.8768264055252075
+        }
+    },
+    "trial_24": {
+        "model_params": {
+            "hidden_sizes": [
+                294,
+                294
+            ],
+            "conv_dropout_rate": 0.19193753574711164,
+            "classifier_dropout_rate": 0.17982497213476722,
+            "use_layer_norm": true,
+            "pool_hidden_size": 131,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 159,
+            "batch_size": 27,
+            "learning_rate": 0.0003604079343681351,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.8884244561195374,
+            "auroc": 0.9456843733787537,
+            "avp": 0.9361507892608643,
+            "f1": 0.8803907632827759
+        }
+    },
+    "trial_25": {
+        "model_params": {
+            "hidden_sizes": [
+                458,
+                458
+            ],
+            "conv_dropout_rate": 0.083622500493847,
+            "classifier_dropout_rate": 0.1044473189264281,
+            "use_layer_norm": true,
+            "pool_hidden_size": 248,
+            "num_heads": 2
+        },
+        "train_function_params": {
+            "num_epochs": 194,
+            "batch_size": 30,
+            "learning_rate": 0.00017376576406262647,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.8821543455123901,
+            "auroc": 0.9408977031707764,
+            "avp": 0.9320037364959717,
+            "f1": 0.8734531402587891
+        }
+    },
+    "trial_26": {
+        "model_params": {
+            "hidden_sizes": [
+                367,
+                367,
+                367
+            ],
+            "conv_dropout_rate": 0.2827073841890143,
+            "classifier_dropout_rate": 0.27361170000733515,
+            "use_layer_norm": true,
+            "pool_hidden_size": 591,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 153,
+            "batch_size": 26,
+            "learning_rate": 0.0010590325014032491,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.7824758887290955,
+            "auroc": 0.8356114029884338,
+            "avp": 0.8149235248565674,
+            "f1": 0.7609061002731323
+        }
+    },
+    "trial_27": {
+        "model_params": {
+            "hidden_sizes": [
+                286,
+                286
+            ],
+            "conv_dropout_rate": 0.1805734841595557,
+            "classifier_dropout_rate": 0.20127757591058426,
+            "use_layer_norm": true,
+            "pool_hidden_size": 313,
+            "num_heads": 2
+        },
+        "train_function_params": {
+            "num_epochs": 223,
+            "batch_size": 24,
+            "learning_rate": 4.882249799877029e-05,
+            "optimizer_scheduler": "ReduceLROnPlateau"
+        },
+        "best_metric": {
+            "acc": 0.8787781596183777,
+            "auroc": 0.9413027763366699,
+            "avp": 0.9343536496162415,
+            "f1": 0.8699800968170166
+        }
+    },
+    "trial_28": {
+        "model_params": {
+            "hidden_sizes": [
+                164,
+                164,
+                164
+            ],
+            "conv_dropout_rate": 0.11575785269191816,
+            "classifier_dropout_rate": 0.2468737652815407,
+            "use_layer_norm": false,
+            "pool_hidden_size": 423,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 170,
+            "batch_size": 26,
+            "learning_rate": 0.0005357961360374043,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8827974200248718,
+            "auroc": 0.94744873046875,
+            "avp": 0.9404934644699097,
+            "f1": 0.8746656179428101
+        }
+    },
+    "trial_29": {
+        "model_params": {
+            "hidden_sizes": [
+                172,
+                172,
+                172
+            ],
+            "conv_dropout_rate": 0.0611397779616045,
+            "classifier_dropout_rate": 0.34519564389697177,
+            "use_layer_norm": true,
+            "pool_hidden_size": 430,
+            "num_heads": 2
+        },
+        "train_function_params": {
+            "num_epochs": 265,
+            "batch_size": 30,
+            "learning_rate": 0.00016716531318201452,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8800643086433411,
+            "auroc": 0.9415802359580994,
+            "avp": 0.9319495558738708,
+            "f1": 0.8719030618667603
+        }
+    },
+    "trial_30": {
+        "model_params": {
+            "hidden_sizes": [
+                157,
+                157,
+                157
+            ],
+            "conv_dropout_rate": 0.12000744429800285,
+            "classifier_dropout_rate": 0.2521249304556802,
+            "use_layer_norm": false,
+            "pool_hidden_size": 654,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 166,
+            "batch_size": 27,
+            "learning_rate": 0.0004421063886107345,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8813504576683044,
+            "auroc": 0.9455324411392212,
+            "avp": 0.9382518529891968,
+            "f1": 0.8734946250915527
+        }
+    },
+    "trial_31": {
+        "model_params": {
+            "hidden_sizes": [
+                180,
+                180,
+                180
+            ],
+            "conv_dropout_rate": 0.24173647630884137,
+            "classifier_dropout_rate": 0.3562424143215086,
+            "use_layer_norm": false,
+            "pool_hidden_size": 530,
+            "num_heads": 4
+        },
+        "train_function_params": {
+            "num_epochs": 141,
+            "batch_size": 24,
+            "learning_rate": 0.0019251968341812654,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8696141242980957,
+            "auroc": 0.9334588050842285,
+            "avp": 0.927250862121582,
+            "f1": 0.8578832149505615
+        }
+    },
+    "trial_32": {
+        "model_params": {
+            "hidden_sizes": [
+                128,
+                128,
+                128
+            ],
+            "conv_dropout_rate": 0.07182719336857654,
+            "classifier_dropout_rate": 0.0676658363342425,
+            "use_layer_norm": true,
+            "pool_hidden_size": 833,
+            "num_heads": 4
+        },
+        "train_function_params": {
+            "num_epochs": 202,
+            "batch_size": 31,
+            "learning_rate": 0.00017864824306918983,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.883922815322876,
+            "auroc": 0.9424967765808105,
+            "avp": 0.9334755539894104,
+            "f1": 0.8754758238792419
+        }
+    },
+    "trial_33": {
+        "model_params": {
+            "hidden_sizes": [
+                261,
+                261,
+                261
+            ],
+            "conv_dropout_rate": 0.16072363882168833,
+            "classifier_dropout_rate": 0.2315578393353637,
+            "use_layer_norm": false,
+            "pool_hidden_size": 193,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 173,
+            "batch_size": 27,
+            "learning_rate": 0.0006614567547886197,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8807073831558228,
+            "auroc": 0.9446691274642944,
+            "avp": 0.9372715950012207,
+            "f1": 0.873160183429718
+        }
+    },
+    "trial_34": {
+        "model_params": {
+            "hidden_sizes": [
+                192,
+                192
+            ],
+            "conv_dropout_rate": 0.188519484142669,
+            "classifier_dropout_rate": 0.2800568016350217,
+            "use_layer_norm": false,
+            "pool_hidden_size": 418,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 192,
+            "batch_size": 26,
+            "learning_rate": 0.0010880035185098602,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.882958173751831,
+            "auroc": 0.946809709072113,
+            "avp": 0.9390085339546204,
+            "f1": 0.8749068975448608
+        }
+    },
+    "trial_35": {
+        "model_params": {
+            "hidden_sizes": [
+                189,
+                189,
+                189
+            ],
+            "conv_dropout_rate": 0.1153235820220191,
+            "classifier_dropout_rate": 0.2923857030392269,
+            "use_layer_norm": false,
+            "pool_hidden_size": 414,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 193,
+            "batch_size": 25,
+            "learning_rate": 0.0014777470828626427,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8792604207992554,
+            "auroc": 0.9422705769538879,
+            "avp": 0.9321441650390625,
+            "f1": 0.8710556626319885
+        }
+    },
+    "trial_36": {
+        "model_params": {
+            "hidden_sizes": [
+                197,
+                197
+            ],
+            "conv_dropout_rate": 0.20717807586021025,
+            "classifier_dropout_rate": 0.37314759793515123,
+            "use_layer_norm": false,
+            "pool_hidden_size": 351,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 226,
+            "batch_size": 29,
+            "learning_rate": 0.0003074328926614175,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8800643086433411,
+            "auroc": 0.9482355117797852,
+            "avp": 0.9409052729606628,
+            "f1": 0.8724470734596252
+        }
+    },
+    "trial_37": {
+        "model_params": {
+            "hidden_sizes": [
+                256,
+                256
+            ],
+            "conv_dropout_rate": 0.2695585050800251,
+            "classifier_dropout_rate": 0.36924998138081205,
+            "use_layer_norm": false,
+            "pool_hidden_size": 277,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 225,
+            "batch_size": 29,
+            "learning_rate": 0.0003204629695187444,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8795819878578186,
+            "auroc": 0.9496772289276123,
+            "avp": 0.9421265125274658,
+            "f1": 0.8714878559112549
+        }
+    },
+    "trial_38": {
+        "model_params": {
+            "hidden_sizes": [
+                259,
+                259
+            ],
+            "conv_dropout_rate": 0.35778762695399163,
+            "classifier_dropout_rate": 0.3805467030191211,
+            "use_layer_norm": false,
+            "pool_hidden_size": 328,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 224,
+            "batch_size": 32,
+            "learning_rate": 0.0023263576441919405,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8742765188217163,
+            "auroc": 0.9370951652526855,
+            "avp": 0.9287196397781372,
+            "f1": 0.864433765411377
+        }
+    },
+    "trial_39": {
+        "model_params": {
+            "hidden_sizes": [
+                198
+            ],
+            "conv_dropout_rate": 0.25941600852901936,
+            "classifier_dropout_rate": 0.4820918074127054,
+            "use_layer_norm": false,
+            "pool_hidden_size": 248,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 230,
+            "batch_size": 29,
+            "learning_rate": 6.140553784933764e-05,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8405144810676575,
+            "auroc": 0.9159091711044312,
+            "avp": 0.9067744612693787,
+            "f1": 0.8305376768112183
+        }
+    },
+    "trial_40": {
+        "model_params": {
+            "hidden_sizes": [
+                260,
+                260
+            ],
+            "conv_dropout_rate": 0.2236756944993311,
+            "classifier_dropout_rate": 0.4616819543060114,
+            "use_layer_norm": false,
+            "pool_hidden_size": 370,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 271,
+            "batch_size": 32,
+            "learning_rate": 0.0026349477902086627,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8667202591896057,
+            "auroc": 0.9360174536705017,
+            "avp": 0.927987277507782,
+            "f1": 0.8577103018760681
+        }
+    },
+    "trial_41": {
+        "model_params": {
+            "hidden_sizes": [
+                203,
+                203
+            ],
+            "conv_dropout_rate": 0.33138526757208653,
+            "classifier_dropout_rate": 0.3766587820180401,
+            "use_layer_norm": false,
+            "pool_hidden_size": 462,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 208,
+            "batch_size": 30,
+            "learning_rate": 0.00011652967389071508,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8721864819526672,
+            "auroc": 0.9452375769615173,
+            "avp": 0.9392720460891724,
+            "f1": 0.8636655807495117
+        }
+    },
+    "trial_42": {
+        "model_params": {
+            "hidden_sizes": [
+                234
+            ],
+            "conv_dropout_rate": 0.2601575362683084,
+            "classifier_dropout_rate": 0.3082779931788355,
+            "use_layer_norm": false,
+            "pool_hidden_size": 556,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 140,
+            "batch_size": 26,
+            "learning_rate": 0.0009217991808553912,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8757234811782837,
+            "auroc": 0.9422856569290161,
+            "avp": 0.935644268989563,
+            "f1": 0.8666437864303589
+        }
+    },
+    "trial_43": {
+        "model_params": {
+            "hidden_sizes": [
+                152,
+                152
+            ],
+            "conv_dropout_rate": 0.1837031957567982,
+            "classifier_dropout_rate": 0.39254191419798523,
+            "use_layer_norm": false,
+            "pool_hidden_size": 269,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 198,
+            "batch_size": 29,
+            "learning_rate": 0.0003156520564187397,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8773311972618103,
+            "auroc": 0.9465497136116028,
+            "avp": 0.9406775832176208,
+            "f1": 0.8691980838775635
+        }
+    },
+    "trial_44": {
+        "model_params": {
+            "hidden_sizes": [
+                158,
+                158
+            ],
+            "conv_dropout_rate": 0.20348607760673276,
+            "classifier_dropout_rate": 0.4522530659667204,
+            "use_layer_norm": false,
+            "pool_hidden_size": 358,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 195,
+            "batch_size": 29,
+            "learning_rate": 0.0002484821999863524,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8736334443092346,
+            "auroc": 0.9454029202461243,
+            "avp": 0.9382236003875732,
+            "f1": 0.8662437200546265
+        }
+    },
+    "trial_45": {
+        "model_params": {
+            "hidden_sizes": [
+                221,
+                221
+            ],
+            "conv_dropout_rate": 0.22920319225019375,
+            "classifier_dropout_rate": 0.3654890203047852,
+            "use_layer_norm": false,
+            "pool_hidden_size": 257,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 215,
+            "batch_size": 32,
+            "learning_rate": 0.0004479609381663015,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8811897039413452,
+            "auroc": 0.9478489756584167,
+            "avp": 0.9401018023490906,
+            "f1": 0.8744907379150391
+        }
+    },
+    "trial_46": {
+        "model_params": {
+            "hidden_sizes": [
+                216,
+                216
+            ],
+            "conv_dropout_rate": 0.24283371162394762,
+            "classifier_dropout_rate": 0.35569386082246035,
+            "use_layer_norm": false,
+            "pool_hidden_size": 209,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 233,
+            "batch_size": 32,
+            "learning_rate": 0.0004767058559897117,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.88408362865448,
+            "auroc": 0.9493497610092163,
+            "avp": 0.9437985420227051,
+            "f1": 0.8758589625358582
+        }
+    },
+    "trial_47": {
+        "model_params": {
+            "hidden_sizes": [
+                213,
+                213
+            ],
+            "conv_dropout_rate": 0.28632434734322465,
+            "classifier_dropout_rate": 0.35572702833441705,
+            "use_layer_norm": false,
+            "pool_hidden_size": 203,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 232,
+            "batch_size": 32,
+            "learning_rate": 0.00042108734580465775,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8799035549163818,
+            "auroc": 0.9483078122138977,
+            "avp": 0.9417632818222046,
+            "f1": 0.8719847202301025
+        }
+    },
+    "trial_55": {
+        "model_params": {
+            "hidden_sizes": [
+                184,
+                184
+            ],
+            "conv_dropout_rate": 0.2089575540823105,
+            "classifier_dropout_rate": 0.3954349651563439,
+            "use_layer_norm": false,
+            "pool_hidden_size": 221,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 246,
+            "batch_size": 32,
+            "learning_rate": 0.00031406831529926817,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8782958388328552,
+            "auroc": 0.947475016117096,
+            "avp": 0.9398653507232666,
+            "f1": 0.8704030513763428
+        }
+    },
+    "trial_56": {
+        "model_params": {
+            "hidden_sizes": [
+                274,
+                274
+            ],
+            "conv_dropout_rate": 0.2083663317864186,
+            "classifier_dropout_rate": 0.3894381237215989,
+            "use_layer_norm": false,
+            "pool_hidden_size": 228,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 245,
+            "batch_size": 32,
+            "learning_rate": 0.00028303153085119806,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.882958173751831,
+            "auroc": 0.951358437538147,
+            "avp": 0.9433557987213135,
+            "f1": 0.8755247592926025
+        }
+    },
+    "trial_57": {
+        "model_params": {
+            "hidden_sizes": [
+                279,
+                279
+            ],
+            "conv_dropout_rate": 0.24497996148879103,
+            "classifier_dropout_rate": 0.42769565788800584,
+            "use_layer_norm": false,
+            "pool_hidden_size": 286,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 275,
+            "batch_size": 30,
+            "learning_rate": 0.0002141264350478278,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8784565925598145,
+            "auroc": 0.9483981132507324,
+            "avp": 0.9419500827789307,
+            "f1": 0.8708550930023193
+        }
+    },
+    "trial_58": {
+        "model_params": {
+            "hidden_sizes": [
+                282,
+                282
+            ],
+            "conv_dropout_rate": 0.3167721670354718,
+            "classifier_dropout_rate": 0.41822241589270764,
+            "use_layer_norm": false,
+            "pool_hidden_size": 284,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 282,
+            "batch_size": 30,
+            "learning_rate": 0.00013887543816175073,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8763665556907654,
+            "auroc": 0.9455438852310181,
+            "avp": 0.9394896626472473,
+            "f1": 0.8680318593978882
+        }
+    },
+    "trial_59": {
+        "model_params": {
+            "hidden_sizes": [
+                275,
+                275
+            ],
+            "conv_dropout_rate": 0.25186671222701457,
+            "classifier_dropout_rate": 0.43921015576121825,
+            "use_layer_norm": false,
+            "pool_hidden_size": 170,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 293,
+            "batch_size": 30,
+            "learning_rate": 0.0002021051902106177,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8813504576683044,
+            "auroc": 0.9481910467147827,
+            "avp": 0.9410146474838257,
+            "f1": 0.8736664652824402
+        }
+    },
+    "trial_60": {
+        "model_params": {
+            "hidden_sizes": [
+                299,
+                299
+            ],
+            "conv_dropout_rate": 0.27597477866217146,
+            "classifier_dropout_rate": 0.3830113605144702,
+            "use_layer_norm": false,
+            "pool_hidden_size": 211,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 258,
+            "batch_size": 16,
+            "learning_rate": 0.00028344299724836273,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8844051361083984,
+            "auroc": 0.94825279712677,
+            "avp": 0.9421951770782471,
+            "f1": 0.8764209747314453
+        }
+    },
+    "trial_66": {
+        "model_params": {
+            "hidden_sizes": [
+                243,
+                243
+            ],
+            "conv_dropout_rate": 0.4703118121085901,
+            "classifier_dropout_rate": 0.36272691518541134,
+            "use_layer_norm": false,
+            "pool_hidden_size": 182,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 244,
+            "batch_size": 29,
+            "learning_rate": 0.00014783080388440446,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8739550113677979,
+            "auroc": 0.9451931715011597,
+            "avp": 0.9380216598510742,
+            "f1": 0.8653813004493713
+        }
+    },
+    "trial_67": {
+        "model_params": {
+            "hidden_sizes": [
+                242,
+                242
+            ],
+            "conv_dropout_rate": 0.29402301913886386,
+            "classifier_dropout_rate": 0.3886758515954309,
+            "use_layer_norm": false,
+            "pool_hidden_size": 299,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 272,
+            "batch_size": 18,
+            "learning_rate": 0.0003855297793060241,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8837620615959167,
+            "auroc": 0.9483655691146851,
+            "avp": 0.9410591125488281,
+            "f1": 0.8749287128448486
+        }
+    },
+    "trial_68": {
+        "model_params": {
+            "hidden_sizes": [
+                294,
+                294
+            ],
+            "conv_dropout_rate": 0.29849729685040155,
+            "classifier_dropout_rate": 0.3423186386139549,
+            "use_layer_norm": false,
+            "pool_hidden_size": 301,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 276,
+            "batch_size": 19,
+            "learning_rate": 0.0006831652446803458,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8853697776794434,
+            "auroc": 0.9447284936904907,
+            "avp": 0.9367333054542542,
+            "f1": 0.8771927952766418
+        }
+    },
+    "trial_69": {
+        "model_params": {
+            "hidden_sizes": [
+                244,
+                244
+            ],
+            "conv_dropout_rate": 0.2867216329899835,
+            "classifier_dropout_rate": 0.39743122054357377,
+            "use_layer_norm": false,
+            "pool_hidden_size": 219,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 262,
+            "batch_size": 17,
+            "learning_rate": 0.000418715149432409,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8834404945373535,
+            "auroc": 0.9489858150482178,
+            "avp": 0.9414162635803223,
+            "f1": 0.8752939701080322
+        }
+    },
+    "trial_70": {
+        "model_params": {
+            "hidden_sizes": [
+                245,
+                245
+            ],
+            "conv_dropout_rate": 0.3808684864795323,
+            "classifier_dropout_rate": 0.4088193647507526,
+            "use_layer_norm": false,
+            "pool_hidden_size": 655,
+            "num_heads": 3
+        },
+        "train_function_params": {
+            "num_epochs": 296,
+            "batch_size": 17,
+            "learning_rate": 0.00040815422898495614,
+            "optimizer_scheduler": "OneCycleLR"
+        },
+        "best_metric": {
+            "acc": 0.8821543455123901,
+            "auroc": 0.9446365237236023,
+            "avp": 0.9362495541572571,
+            "f1": 0.8737255334854126
+        }
+    }
+}
